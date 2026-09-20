@@ -123,6 +123,13 @@
   #live-users-list li { display: flex; align-items: center; gap:9px; padding: 8px 8px; font-size:14.5px; border-radius:10px; }
   #live-users-list li .dot { width:8px; height:8px; border-radius:50%; background:#6FCF97; flex-shrink:0; }
   #live-users-empty { color: var(--text-muted); font-size: 13.5px; padding: 14px; text-align:center; }
+
+  .avatar-img { width:20px; height:20px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:6px; }
+  .avatar-fallback { width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+    font-size:10.5px; font-weight:700; color:#171B2E; vertical-align:middle; margin-right:6px; }
+  .sender { display:flex; align-items:center; }
+  #live-users-list li .avatar-img, #live-users-list li .avatar-fallback { width:24px; height:24px; margin-right:0; }
+  #live-users-list li .dot { margin-left:-2px; }
 </style>
 </head>
 <body>
@@ -176,9 +183,16 @@
     <div style="width:100%; display:flex; justify-content:flex-start;">
       <button id="profile-back-btn" class="link-btn">← Back</button>
     </div>
-    <div class="lantern">👤</div>
+    <img id="profile-avatar-preview" alt="" style="width:76px; height:76px; border-radius:50%; object-fit:cover; background:var(--surface); display:none;">
+    <div id="profile-avatar-fallback" class="lantern">👤</div>
     <h2>Your profile <span id="profile-admin-badge" class="admin-badge" style="display:none;">admin</span></h2>
     <p class="hint" id="profile-email"></p>
+
+    <div class="form-stack">
+      <button id="profile-photo-btn" class="btn secondary" type="button">Change photo</button>
+      <input id="profile-photo-input" type="file" accept="image/*" style="display:none;">
+      <div class="error" id="profile-photo-error"></div>
+    </div>
 
     <div class="form-stack">
       <input id="profile-name" class="field" type="text" placeholder="Display name" maxlength="24">
@@ -272,6 +286,53 @@ function randomSalt() {
   return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Resizes/compresses an image file down to a small square JPEG data URL, so
+// it can live directly in the free Realtime Database instead of needing
+// Firebase Storage (which now requires a paid/billing-enabled plan).
+function fileToAvatarDataUrl(file, size = 128) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.onload = () => {
+      img.onerror = () => reject(new Error('decode failed'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const s = Math.min(img.width, img.height);
+        const sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+        ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// uid -> {name, photo}, cached lookups for rendering other people's avatars
+const profileCache = {};
+async function getUserProfile(uid) {
+  if (profileCache[uid]) return profileCache[uid];
+  const snap = await db.ref('users/' + uid).once('value');
+  const val = snap.val() || {};
+  profileCache[uid] = val;
+  return val;
+}
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : str;
+  return d.innerHTML;
+}
+function avatarHtml(uid, name, photo) {
+  if (photo && /^data:image\/(jpeg|png|webp);base64,/.test(photo)) {
+    return '<img class="avatar-img" src="' + photo + '" alt="">';
+  }
+  const initial = escapeHtml((name || '?').trim().charAt(0).toUpperCase());
+  return '<span class="avatar-fallback" style="background:' + colorFor(uid) + '">' + initial + '</span>';
+}
+
 // ---------- elements ----------
 const authScreen = document.getElementById('auth-screen');
 const authTitle = document.getElementById('auth-title');
@@ -303,6 +364,11 @@ const profileBackBtn = document.getElementById('profile-back-btn');
 const profileEmail = document.getElementById('profile-email');
 const profileName = document.getElementById('profile-name');
 const profileAdminBadge = document.getElementById('profile-admin-badge');
+const profileAvatarPreview = document.getElementById('profile-avatar-preview');
+const profileAvatarFallback = document.getElementById('profile-avatar-fallback');
+const profilePhotoBtn = document.getElementById('profile-photo-btn');
+const profilePhotoInput = document.getElementById('profile-photo-input');
+const profilePhotoError = document.getElementById('profile-photo-error');
 const profileSaveNameBtn = document.getElementById('profile-save-name-btn');
 const profileNameError = document.getElementById('profile-name-error');
 const profileCurrentPw = document.getElementById('profile-current-pw');
@@ -387,7 +453,18 @@ signoutBtn.addEventListener('click', () => { cleanupRoom(); auth.signOut(); });
 // =======================================================================
 // PROFILE
 // =======================================================================
-profileBtn.addEventListener('click', () => {
+async function showProfileAvatar(photo) {
+  if (photo) {
+    profileAvatarPreview.src = photo;
+    profileAvatarPreview.style.display = 'block';
+    profileAvatarFallback.style.display = 'none';
+  } else {
+    profileAvatarPreview.style.display = 'none';
+    profileAvatarFallback.style.display = 'block';
+  }
+}
+
+profileBtn.addEventListener('click', async () => {
   const user = auth.currentUser;
   profileName.value = user.displayName || '';
   profileEmail.textContent = user.email;
@@ -396,8 +473,36 @@ profileBtn.addEventListener('click', () => {
   profileNewPw.value = '';
   profileNameError.textContent = '';
   profilePwError.textContent = '';
+  profilePhotoError.textContent = '';
   roomScreen.style.display = 'none';
   profileScreen.style.display = 'flex';
+  delete profileCache[user.uid]; // force a fresh read of your own latest photo
+  const profile = await getUserProfile(user.uid);
+  showProfileAvatar(profile.photo);
+});
+
+profilePhotoBtn.addEventListener('click', () => profilePhotoInput.click());
+profilePhotoInput.addEventListener('change', async () => {
+  const file = profilePhotoInput.files[0];
+  if (!file) return;
+  profilePhotoError.textContent = '';
+  profilePhotoBtn.disabled = true;
+  try {
+    const dataUrl = await fileToAvatarDataUrl(file);
+    // Realtime Database write payloads are capped well above this, but keep
+    // an eye out in case a very unusual image compresses larger than expected.
+    if (dataUrl.length > 300000) throw new Error('too-large');
+    const user = auth.currentUser;
+    await db.ref('users/' + user.uid).update({ photo: dataUrl, name: user.displayName || '' });
+    profileCache[user.uid] = { ...(profileCache[user.uid] || {}), photo: dataUrl, name: user.displayName || '' };
+    showProfileAvatar(dataUrl);
+  } catch (e) {
+    profilePhotoError.textContent = e.message === 'too-large'
+      ? "That image is too large even after compressing — try a smaller/simpler photo."
+      : "Couldn't set that photo. Try a different image.";
+  }
+  profilePhotoBtn.disabled = false;
+  profilePhotoInput.value = '';
 });
 profileBackBtn.addEventListener('click', () => {
   profileScreen.style.display = 'none';
@@ -467,13 +572,13 @@ function renderLiveUsers() {
   }
   ids.forEach(id => {
     const li = document.createElement('li');
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-    const name = document.createElement('span');
-    name.textContent = roomMembers[id].name + (id === memberId ? ' (you)' : '');
-    li.appendChild(dot);
-    li.appendChild(name);
+    const memberName = roomMembers[id].name;
+    li.innerHTML = avatarHtml(id, memberName, profileCache[id]?.photo) +
+      '<span class="dot"></span><span>' + escapeHtml(memberName) + (id === memberId ? ' (you)' : '') + '</span>';
     liveUsersList.appendChild(li);
+    if (!profileCache[id]) {
+      getUserProfile(id).then(() => renderLiveUsers());
+    }
   });
 }
 
@@ -644,8 +749,13 @@ function appendMessage(m) {
     const sender = document.createElement('div');
     sender.className = 'sender';
     sender.style.color = m.color || colorFor(m.uid);
-    sender.textContent = m.name;
+    sender.innerHTML = avatarHtml(m.uid, m.name, profileCache[m.uid]?.photo) + '<span>' + escapeHtml(m.name) + '</span>';
     row.appendChild(sender);
+    if (!profileCache[m.uid]) {
+      getUserProfile(m.uid).then(profile => {
+        if (profile.photo) sender.innerHTML = avatarHtml(m.uid, m.name, profile.photo) + '<span>' + escapeHtml(m.name) + '</span>';
+      });
+    }
   }
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
