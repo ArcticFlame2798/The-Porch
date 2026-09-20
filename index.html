@@ -10,6 +10,7 @@
 
 <!-- Firebase (free tier) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 
 <style>
@@ -24,14 +25,48 @@
     font-family:'Manrope',-apple-system,sans-serif; overscroll-behavior:none; }
   #app { display:flex; flex-direction:column; height:100vh; max-width:640px; margin:0 auto; }
 
-  header { position:relative; padding:22px 20px 16px; background:var(--surface-2);
-    border-bottom:1px solid var(--border); flex-shrink:0; overflow:hidden; }
+  header { position:relative; padding:18px 20px 14px; background:var(--surface-2);
+    border-bottom:1px solid var(--border); flex-shrink:0; overflow:hidden;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; }
   header::before { content:""; position:absolute; top:-60px; left:50%; width:220px; height:220px;
     transform:translateX(-50%); background:radial-gradient(circle, rgba(232,163,61,0.28), transparent 70%);
     pointer-events:none; }
   header h1 { margin:0; font-family:'Fraunces',serif; font-weight:500; font-size:22px; position:relative; }
-  header .sub { margin-top:4px; font-size:13px; color:var(--text-muted); position:relative; }
+  header .sub { margin-top:3px; font-size:12.5px; color:var(--text-muted); position:relative; }
+  .link-btn { background:none; border:none; color:var(--text-muted); font:inherit; font-size:12.5px;
+    cursor:pointer; text-decoration:underline; position:relative; padding:4px; }
 
+  /* ---------- Screens ---------- */
+  .screen { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:36px 26px; text-align:center; gap:16px; overflow-y:auto; }
+  .screen .lantern { font-size:38px; }
+  .screen h2 { font-family:'Fraunces',serif; font-weight:500; font-size:23px; margin:0; }
+  .screen p.hint { color:var(--text-muted); font-size:13.5px; margin:0; max-width:320px; line-height:1.5; }
+  .field { width:100%; max-width:280px; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:12px; padding:11px 14px; font:inherit; font-size:15px;
+    text-align:center; outline:none; }
+  .field:focus { border-color:var(--accent); }
+  .btn { background:var(--accent); color:var(--accent-text); border:none; border-radius:12px;
+    padding:11px 26px; font:inherit; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .btn:disabled { opacity:0.4; cursor:default; }
+  .btn.secondary { background:transparent; border:1px solid var(--border); color:var(--text); }
+  .error { color:var(--danger); font-size:13px; min-height:16px; }
+  .form-stack { display:flex; flex-direction:column; gap:10px; width:100%; max-width:280px; align-items:center; }
+
+  /* Room list */
+  .room-list { width:100%; max-width:340px; text-align:left; display:flex; flex-direction:column; gap:8px; }
+  .room-option { display:flex; align-items:center; gap:10px; background:var(--surface);
+    border:1px solid var(--border); border-radius:12px; padding:12px 14px; cursor:pointer; }
+  .room-option input[type=radio] { accent-color:var(--accent); width:17px; height:17px; flex-shrink:0; }
+  .room-option span { font-size:15px; }
+  .room-option.selected { border-color:var(--accent); }
+  #no-rooms { color:var(--text-muted); font-size:14px; }
+  #admin-panel { width:100%; max-width:340px; border-top:1px solid var(--border); margin-top:6px; padding-top:16px; }
+  #admin-panel summary { cursor:pointer; color:var(--accent); font-size:13.5px; font-weight:700; }
+  .admin-badge { font-size:10.5px; background:var(--accent); color:var(--accent-text);
+    border-radius:20px; padding:2px 8px; font-weight:700; }
+
+  /* ---------- Chat ---------- */
   #messages { flex:1; overflow-y:auto; padding:18px 16px 10px; display:flex; flex-direction:column; }
   .row { display:flex; flex-direction:column; max-width:78%; margin-bottom:10px; }
   .row.me { align-self:flex-end; align-items:flex-end; }
@@ -56,19 +91,6 @@
     width:42px; height:42px; flex-shrink:0; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
   #composer button:disabled { opacity:0.4; cursor:default; }
 
-  #gate { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:40px 28px; text-align:center; gap:18px; }
-  #gate .lantern { font-size:40px; }
-  #gate h2 { font-family:'Fraunces',serif; font-weight:500; font-size:24px; margin:0; }
-  #gate p { color:var(--text-muted); font-size:14px; margin:0; max-width:320px; line-height:1.5; }
-  #gate input { width:100%; max-width:280px; background:var(--surface); border:1px solid var(--border);
-    color:var(--text); border-radius:12px; padding:12px 14px; font:inherit; font-size:15px; text-align:center; outline:none; }
-  #gate input:focus { border-color:var(--accent); }
-  #join-btn { background:var(--accent); color:var(--accent-text); border:none; border-radius:12px;
-    padding:11px 26px; font:inherit; font-weight:700; font-size:14.5px; cursor:pointer; }
-  #join-btn:disabled { opacity:0.4; cursor:default; }
-  #gate .error { color:var(--danger); font-size:13px; min-height:16px; }
-
   ::-webkit-scrollbar { width:6px; }
   ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 </style>
@@ -76,22 +98,56 @@
 <body>
 <div id="app">
 
-  <div id="gate">
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="screen">
     <div class="lantern">🏮</div>
-    <h2>Welcome to the porch</h2>
-    <p id="gate-copy">Enter your group's secret code, then your username and your own personal password — using the same two every time keeps you as the same person on any device.</p>
-    <input id="code-input" type="password" placeholder="Secret code" maxlength="40" autocomplete="off">
-    <input id="name-input" type="text" placeholder="Username" maxlength="24" autocomplete="off">
-    <input id="pw-input" type="password" placeholder="Your personal password" maxlength="40" autocomplete="off">
-    <button id="join-btn">Sit down</button>
-    <div class="error" id="gate-error"></div>
+    <h2 id="auth-title">Welcome to the porch</h2>
+    <p class="hint" id="auth-hint">Sign in to your account.</p>
+    <div class="form-stack">
+      <input id="auth-name" class="field" type="text" placeholder="Your display name" maxlength="24" style="display:none;">
+      <input id="auth-email" class="field" type="email" placeholder="Email" autocomplete="off">
+      <input id="auth-password" class="field" type="password" placeholder="Password" autocomplete="off">
+      <button id="auth-submit" class="btn">Sign in</button>
+      <button id="auth-toggle" class="link-btn">Need an account? Create one</button>
+    </div>
+    <div class="error" id="auth-error"></div>
   </div>
 
+  <!-- ROOM SCREEN -->
+  <div id="room-screen" class="screen" style="display:none;">
+    <div style="width:100%; display:flex; justify-content:flex-end;">
+      <button id="signout-btn" class="link-btn">Sign out</button>
+    </div>
+    <div class="lantern">🚪</div>
+    <h2>Pick a room <span id="admin-badge" class="admin-badge" style="display:none;">admin</span></h2>
+    <p class="hint">Choose a room, then enter its password to join.</p>
+    <div class="room-list" id="room-list"></div>
+    <div id="no-rooms" style="display:none;">No rooms yet. Ask your admin to create one.</div>
+    <div class="form-stack" id="room-pw-wrap" style="display:none;">
+      <input id="room-pw" class="field" type="password" placeholder="Room password">
+      <button id="room-join-btn" class="btn">Join room</button>
+    </div>
+    <div class="error" id="room-error"></div>
+
+    <details id="admin-panel" style="display:none;">
+      <summary>+ Create a new room</summary>
+      <div class="form-stack" style="margin-top:12px;">
+        <input id="new-room-name" class="field" type="text" placeholder="Room name" maxlength="30">
+        <input id="new-room-pw" class="field" type="password" placeholder="Room password">
+        <button id="create-room-btn" class="btn secondary">Create room</button>
+        <div class="error" id="create-room-error"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- CHAT VIEW -->
   <div id="chat-view" style="display:none; flex-direction:column; height:100%;">
     <header>
-      <h1>The Porch</h1>
-      <div class="sub" id="header-sub">connecting…</div>
-      <div class="sub" id="room-tag" style="opacity:0.6; font-size:11px; margin-top:2px;"></div>
+      <div>
+        <h1 id="room-title">The Porch</h1>
+        <div class="sub" id="header-sub">connecting…</div>
+      </div>
+      <button id="leave-room-btn" class="link-btn">Leave room</button>
     </header>
     <div id="messages">
       <div id="empty-state" style="display:none;">
@@ -109,10 +165,11 @@
 
 <script>
 /* ======================================================================
-   1) PASTE YOUR OWN FIREBASE CONFIG HERE.
-   Get this by creating a free project at https://console.firebase.google.com
-   -> Project settings -> General -> "Your apps" -> Web app -> SDK config.
-   You also need to turn on "Realtime Database" in the left sidebar there.
+   PASTE YOUR OWN FIREBASE CONFIG HERE.
+   Get this from https://console.firebase.google.com -> Project settings
+   -> General -> "Your apps" -> Web app -> Config.
+   You must also enable: Authentication -> Sign-in method -> Email/Password,
+   and Realtime Database (see the setup guide for rules + admin setup).
    ====================================================================== */
 const firebaseConfig = {
   apiKey: "AIzaSyDCdwIV36Xqnm7D967dOc6DA-yhAzmxMvo",
@@ -129,52 +186,246 @@ const MAX_MESSAGES = 400;
 const NAME_COLORS = ['#7FB4CA','#C98BDB','#8FD19E','#E88BA0','#F2C879','#9FA8E8','#8FC4B0','#D9A6E0'];
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.database();
-let membersRef = null;
-let messagesRef = null;
 
-const gate = document.getElementById('gate');
-const gateCopy = document.getElementById('gate-copy');
-const codeInput = document.getElementById('code-input');
-const nameInput = document.getElementById('name-input');
-const pwInput = document.getElementById('pw-input');
-const joinBtn = document.getElementById('join-btn');
-const gateError = document.getElementById('gate-error');
-const chatView = document.getElementById('chat-view');
-const headerSub = document.getElementById('header-sub');
-const roomTag = document.getElementById('room-tag');
-
-// Turns the secret code into an unguessable room path. Nobody can find or
-// read a room without knowing the exact code — the code itself is never
-// sent or stored anywhere, only this one-way hash of it.
-async function sha256Hex(str) {
-  const enc = new TextEncoder().encode(str);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-async function roomIdFromCode(code) {
-  const hex = await sha256Hex(code.trim().toLowerCase());
-  return 'r' + hex.slice(0, 24);
-}
-// Your identity is a fingerprint of username + personal password — not tied
-// to this device. Log in with the same two anywhere and you're the same you.
-async function memberIdFromCreds(username, password) {
-  const hex = await sha256Hex(username.trim().toLowerCase() + '\u0001' + password);
-  return 'u' + hex.slice(0, 24);
-}
-const messagesEl = document.getElementById('messages');
-const emptyState = document.getElementById('empty-state');
-const msgInput = document.getElementById('msg-input');
-const sendBtn = document.getElementById('send-btn');
-
+// ---------- helpers ----------
 function colorFor(id) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return NAME_COLORS[h % NAME_COLORS.length];
 }
+async function sha256Hex(str) {
+  const enc = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randomSalt() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-let memberId = null; // set once the user submits username + password
+// ---------- elements ----------
+const authScreen = document.getElementById('auth-screen');
+const authTitle = document.getElementById('auth-title');
+const authHint = document.getElementById('auth-hint');
+const authName = document.getElementById('auth-name');
+const authEmail = document.getElementById('auth-email');
+const authPassword = document.getElementById('auth-password');
+const authSubmit = document.getElementById('auth-submit');
+const authToggle = document.getElementById('auth-toggle');
+const authError = document.getElementById('auth-error');
+
+const roomScreen = document.getElementById('room-screen');
+const roomList = document.getElementById('room-list');
+const noRooms = document.getElementById('no-rooms');
+const roomPwWrap = document.getElementById('room-pw-wrap');
+const roomPwInput = document.getElementById('room-pw');
+const roomJoinBtn = document.getElementById('room-join-btn');
+const roomError = document.getElementById('room-error');
+const adminBadge = document.getElementById('admin-badge');
+const adminPanel = document.getElementById('admin-panel');
+const newRoomName = document.getElementById('new-room-name');
+const newRoomPw = document.getElementById('new-room-pw');
+const createRoomBtn = document.getElementById('create-room-btn');
+const createRoomError = document.getElementById('create-room-error');
+const signoutBtn = document.getElementById('signout-btn');
+
+const chatView = document.getElementById('chat-view');
+const roomTitle = document.getElementById('room-title');
+const headerSub = document.getElementById('header-sub');
+const messagesEl = document.getElementById('messages');
+const emptyState = document.getElementById('empty-state');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const leaveRoomBtn = document.getElementById('leave-room-btn');
+
+// ---------- state ----------
+let isSignupMode = false;
+let isAdmin = false;
+let rooms = {};        // roomId -> {name, salt, passwordHash}
+let selectedRoomId = null;
+let currentRoomId = null;
+let membersRef = null, messagesRef = null, roomsListenerRef = null;
+
+// =======================================================================
+// AUTH
+// =======================================================================
+authToggle.addEventListener('click', () => {
+  isSignupMode = !isSignupMode;
+  authName.style.display = isSignupMode ? 'block' : 'none';
+  authSubmit.textContent = isSignupMode ? 'Create account' : 'Sign in';
+  authTitle.textContent = isSignupMode ? 'Join the porch' : 'Welcome back';
+  authHint.textContent = isSignupMode ? 'Create your account with a name, email and password.' : 'Sign in to your account.';
+  authToggle.textContent = isSignupMode ? 'Already have an account? Sign in' : "Need an account? Create one";
+  authError.textContent = '';
+});
+
+authSubmit.addEventListener('click', async () => {
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+  const name = authName.value.trim();
+  authError.textContent = '';
+  if (!email || !password) { authError.textContent = 'Enter an email and password.'; return; }
+  if (isSignupMode && !name) { authError.textContent = 'Enter a display name.'; return; }
+  authSubmit.disabled = true;
+  try {
+    if (isSignupMode) {
+      const cred = await auth.createUserWithEmailAndPassword(email, password);
+      await cred.user.updateProfile({ displayName: name });
+      await db.ref('users/' + cred.user.uid).set({ name });
+    } else {
+      await auth.signInWithEmailAndPassword(email, password);
+    }
+  } catch (e) {
+    authError.textContent = e.message.replace('Firebase: ', '');
+  }
+  authSubmit.disabled = false;
+});
+
+signoutBtn.addEventListener('click', () => auth.signOut());
+leaveRoomBtn.addEventListener('click', () => {
+  if (messagesRef) messagesRef.off();
+  if (membersRef) membersRef.off();
+  currentRoomId = null;
+  chatView.style.display = 'none';
+  roomScreen.style.display = 'flex';
+  roomPwWrap.style.display = 'none';
+  selectedRoomId = null;
+  roomPwInput.value = '';
+});
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    if (roomsListenerRef) roomsListenerRef.off();
+    authScreen.style.display = 'flex';
+    roomScreen.style.display = 'none';
+    chatView.style.display = 'none';
+    return;
+  }
+  authScreen.style.display = 'none';
+  roomScreen.style.display = 'flex';
+
+  const adminSnap = await db.ref('admins/' + user.uid).once('value');
+  isAdmin = adminSnap.val() === true;
+  adminBadge.style.display = isAdmin ? 'inline-block' : 'none';
+  adminPanel.style.display = isAdmin ? 'block' : 'none';
+
+  roomsListenerRef = db.ref('rooms');
+  roomsListenerRef.on('value', snap => {
+    rooms = snap.val() || {};
+    renderRoomList();
+  });
+});
+
+// =======================================================================
+// ROOM LIST + CREATION
+// =======================================================================
+function renderRoomList() {
+  roomList.innerHTML = '';
+  const ids = Object.keys(rooms);
+  noRooms.style.display = ids.length ? 'none' : 'block';
+  ids.forEach(id => {
+    const label = document.createElement('label');
+    label.className = 'room-option' + (selectedRoomId === id ? ' selected' : '');
+    label.innerHTML = '<input type="radio" name="room" value="' + id + '"' + (selectedRoomId === id ? ' checked' : '') + '><span></span>';
+    label.querySelector('span').textContent = rooms[id].name || 'Unnamed room';
+    label.querySelector('input').addEventListener('change', () => {
+      selectedRoomId = id;
+      roomPwWrap.style.display = 'flex';
+      roomError.textContent = '';
+      renderRoomList();
+    });
+    roomList.appendChild(label);
+  });
+}
+
+createRoomBtn.addEventListener('click', async () => {
+  const name = newRoomName.value.trim();
+  const pw = newRoomPw.value;
+  createRoomError.textContent = '';
+  if (!name || !pw) { createRoomError.textContent = 'Enter a room name and password.'; return; }
+  createRoomBtn.disabled = true;
+  try {
+    const salt = randomSalt();
+    const passwordHash = await sha256Hex(salt + pw);
+    const ref = db.ref('rooms').push();
+    await ref.set({
+      name, salt, passwordHash,
+      createdBy: auth.currentUser.uid,
+      createdAt: Date.now()
+    });
+    newRoomName.value = '';
+    newRoomPw.value = '';
+    // Creator auto-joins their own room without re-entering the password.
+    await joinRoom(ref.key, name);
+  } catch (e) {
+    createRoomError.textContent = "Couldn't create the room. Check your setup (rules/admin flag).";
+  }
+  createRoomBtn.disabled = false;
+});
+
+roomJoinBtn.addEventListener('click', async () => {
+  if (!selectedRoomId) { roomError.textContent = 'Pick a room first.'; return; }
+  const room = rooms[selectedRoomId];
+  const pw = roomPwInput.value;
+  if (!pw) { roomError.textContent = 'Enter the room password.'; return; }
+  roomJoinBtn.disabled = true;
+  roomError.textContent = '';
+  try {
+    const hash = await sha256Hex(room.salt + pw);
+    if (hash !== room.passwordHash) {
+      roomError.textContent = 'Wrong password for that room.';
+      roomJoinBtn.disabled = false;
+      return;
+    }
+    await joinRoom(selectedRoomId, room.name);
+  } catch (e) {
+    roomError.textContent = "Couldn't join. Try again.";
+  }
+  roomJoinBtn.disabled = false;
+});
+
+// =======================================================================
+// CHAT
+// =======================================================================
+let memberId = null;
 let memberCount = 0;
+
+async function joinRoom(roomId, roomName) {
+  const user = auth.currentUser;
+  memberId = user.uid;
+  currentRoomId = roomId;
+  membersRef = db.ref('rooms/' + roomId + '/members');
+  messagesRef = db.ref('rooms/' + roomId + '/messages');
+
+  const snap = await membersRef.once('value');
+  const val = snap.val() || {};
+  if (!val[memberId] && Object.keys(val).length >= MAX_FRIENDS) {
+    roomError.textContent = 'That room is full (' + MAX_FRIENDS + ' friends).';
+    return;
+  }
+  await membersRef.child(memberId).set({
+    name: user.displayName || 'Someone',
+    color: colorFor(memberId),
+    joinedAt: val[memberId]?.joinedAt || Date.now()
+  });
+
+  roomScreen.style.display = 'none';
+  chatView.style.display = 'flex';
+  roomTitle.textContent = roomName;
+  msgInput.focus();
+
+  appendMessage._lastDay = null;
+  appendMessage._lastSender = null;
+  messagesEl.querySelectorAll('.row, .day-divider').forEach(n => n.remove());
+
+  messagesRef.limitToLast(MAX_MESSAGES).on('child_added', s => appendMessage(s.val()));
+  membersRef.on('value', s => {
+    const v = s.val() || {};
+    memberCount = Object.keys(v).length;
+    headerSub.textContent = memberCount + ' / ' + MAX_FRIENDS + ' friends here';
+  });
+}
 
 function appendMessage(m) {
   const day = new Date(m.ts).toDateString();
@@ -187,13 +438,13 @@ function appendMessage(m) {
     appendMessage._lastSender = null;
   }
   emptyState.style.display = 'none';
-  const mine = m.memberId === memberId;
+  const mine = m.uid === memberId;
   const row = document.createElement('div');
   row.className = 'row ' + (mine ? 'me' : 'them');
-  if (!mine && m.memberId !== appendMessage._lastSender) {
+  if (!mine && m.uid !== appendMessage._lastSender) {
     const sender = document.createElement('div');
     sender.className = 'sender';
-    sender.style.color = m.color || colorFor(m.memberId);
+    sender.style.color = m.color || colorFor(m.uid);
     sender.textContent = m.name;
     row.appendChild(sender);
   }
@@ -206,89 +457,11 @@ function appendMessage(m) {
   meta.textContent = new Date(m.ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   row.appendChild(meta);
   messagesEl.appendChild(row);
-  appendMessage._lastSender = m.memberId;
+  appendMessage._lastSender = m.uid;
 
   const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 160;
   if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
-
-function updateHeader() {
-  headerSub.textContent = memberCount + ' / ' + MAX_FRIENDS + ' friends here';
-}
-
-function enterChat(name) {
-  localStorage.setItem('porch_name', name);
-  gate.style.display = 'none';
-  chatView.style.display = 'flex';
-  msgInput.focus();
-
-  messagesRef.limitToLast(MAX_MESSAGES).on('child_added', snap => appendMessage(snap.val()));
-
-  membersRef.on('value', snap => {
-    const val = snap.val() || {};
-    memberCount = Object.keys(val).length;
-    updateHeader();
-  });
-}
-
-async function join() {
-  const code = codeInput.value;
-  const name = nameInput.value.trim();
-  const password = pwInput.value;
-  if (!code.trim()) { gateError.textContent = 'Enter the secret code.'; return; }
-  if (!name) { gateError.textContent = 'Pick a username.'; return; }
-  if (!password) { gateError.textContent = 'Pick a personal password too — that\'s what keeps you as "you" on other devices.'; return; }
-  joinBtn.disabled = true;
-  gateError.textContent = '';
-  try {
-    const roomId = await roomIdFromCode(code);
-    memberId = await memberIdFromCreds(name, password);
-    membersRef = db.ref('rooms/' + roomId + '/members');
-    messagesRef = db.ref('rooms/' + roomId + '/messages');
-    roomTag.textContent = 'room ' + roomId.slice(1, 5);
-
-    const snap = await membersRef.once('value');
-    const val = snap.val() || {};
-    const already = !!val[memberId];
-
-    // Same username already taken by a different username+password combo?
-    const nameTakenByOther = Object.entries(val).some(
-      ([id, m]) => id !== memberId && m.name && m.name.toLowerCase() === name.toLowerCase()
-    );
-    if (!already && nameTakenByOther) {
-      gateError.textContent = 'That username is already in use in this room. Pick another, or check your password.';
-      joinBtn.disabled = false;
-      return;
-    }
-
-    const count = Object.keys(val).length;
-    if (!already && count >= MAX_FRIENDS) {
-      gateError.textContent = 'The porch is full (' + MAX_FRIENDS + ' friends). Ask someone to make room.';
-      joinBtn.disabled = false;
-      return;
-    }
-    await membersRef.child(memberId).set({ name, color: colorFor(memberId), joinedAt: val[memberId]?.joinedAt || Date.now() });
-    localStorage.setItem('porch_code', code);
-    localStorage.setItem('porch_name', name);
-    localStorage.setItem('porch_pw', password);
-    enterChat(name);
-  } catch (e) {
-    gateError.textContent = "Couldn't connect. Check the setup (Firebase config / database rules).";
-    joinBtn.disabled = false;
-  }
-}
-
-joinBtn.addEventListener('click', join);
-pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
-nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') pwInput.focus(); });
-codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.focus(); });
-
-const savedName = localStorage.getItem('porch_name');
-const savedCode = localStorage.getItem('porch_code');
-const savedPw = localStorage.getItem('porch_pw');
-if (savedName) nameInput.value = savedName;
-if (savedCode) codeInput.value = savedCode;
-if (savedPw) pwInput.value = savedPw;
 
 function autoGrow() {
   msgInput.style.height = 'auto';
@@ -305,13 +478,13 @@ sendBtn.addEventListener('click', send);
 
 function send() {
   const text = msgInput.value.trim();
-  if (!text) return;
+  if (!text || !currentRoomId) return;
   sendBtn.disabled = true;
   msgInput.value = '';
   autoGrow();
-  const name = localStorage.getItem('porch_name') || 'Someone';
+  const user = auth.currentUser;
   messagesRef.push({
-    memberId, name, color: colorFor(memberId),
+    uid: user.uid, name: user.displayName || 'Someone', color: colorFor(user.uid),
     text, ts: Date.now()
   }).catch(() => {
     msgInput.value = text;
