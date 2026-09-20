@@ -93,6 +93,36 @@
 
   ::-webkit-scrollbar { width:6px; }
   ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  /* ---------- Live users dialog (dropdown on wide screens, full dialog on narrow) ---------- */
+  #live-users-dialog {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0;
+    background: var(--surface);
+    color: var(--text);
+    width: 260px;
+    max-width: 90vw;
+  }
+  #live-users-dialog::backdrop { background: rgba(10,12,24,0.55); }
+  @media (min-width: 560px) {
+    #live-users-dialog {
+      position: fixed;
+      top: 64px;
+      inset-inline-end: max(24px, calc(50vw - 296px));
+      margin: 0;
+    }
+    #live-users-dialog::backdrop { background: transparent; }
+  }
+  .dialog-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    font-family: 'Fraunces', serif; font-size: 14.5px;
+  }
+  #live-users-list { list-style: none; margin: 0; padding: 6px; max-height: 300px; overflow-y: auto; }
+  #live-users-list li { display: flex; align-items: center; gap:9px; padding: 8px 8px; font-size:14.5px; border-radius:10px; }
+  #live-users-list li .dot { width:8px; height:8px; border-radius:50%; background:#6FCF97; flex-shrink:0; }
+  #live-users-empty { color: var(--text-muted); font-size: 13.5px; padding: 14px; text-align:center; }
 </style>
 </head>
 <body>
@@ -147,8 +177,21 @@
         <h1 id="room-title">The Porch</h1>
         <div class="sub" id="header-sub">connecting…</div>
       </div>
-      <button id="leave-room-btn" class="link-btn">Leave room</button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="live-users-btn" class="link-btn" style="text-decoration:none; display:flex; align-items:center; gap:5px;">
+          <span style="width:7px; height:7px; border-radius:50%; background:#6FCF97; display:inline-block;"></span>
+          <span id="live-count">0 live</span>
+        </button>
+        <button id="leave-room-btn" class="link-btn">Leave room</button>
+      </div>
     </header>
+    <dialog id="live-users-dialog">
+      <div class="dialog-head">
+        <span>Live now</span>
+        <button id="close-live-dialog" class="link-btn">Close</button>
+      </div>
+      <ul id="live-users-list"></ul>
+    </dialog>
     <div id="messages">
       <div id="empty-state" style="display:none;">
         <span>Quiet out here.</span>
@@ -238,6 +281,11 @@ const emptyState = document.getElementById('empty-state');
 const msgInput = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
 const leaveRoomBtn = document.getElementById('leave-room-btn');
+const liveUsersBtn = document.getElementById('live-users-btn');
+const liveCount = document.getElementById('live-count');
+const liveUsersDialog = document.getElementById('live-users-dialog');
+const liveUsersList = document.getElementById('live-users-list');
+const closeLiveDialog = document.getElementById('close-live-dialog');
 
 // ---------- state ----------
 let isSignupMode = false;
@@ -246,6 +294,9 @@ let rooms = {};        // roomId -> {name, salt, passwordHash}
 let selectedRoomId = null;
 let currentRoomId = null;
 let membersRef = null, messagesRef = null, roomsListenerRef = null;
+let presenceRef = null, presenceListRef = null, connectedRef = null;
+let roomMembers = {};  // uid -> {name, color}
+let liveUids = {};     // uid -> true, currently-connected users
 
 // =======================================================================
 // AUTH
@@ -282,11 +333,21 @@ authSubmit.addEventListener('click', async () => {
   authSubmit.disabled = false;
 });
 
-signoutBtn.addEventListener('click', () => auth.signOut());
-leaveRoomBtn.addEventListener('click', () => {
+function cleanupRoom() {
   if (messagesRef) messagesRef.off();
   if (membersRef) membersRef.off();
+  if (presenceListRef) presenceListRef.off();
+  if (connectedRef) connectedRef.off();
+  if (presenceRef) { presenceRef.onDisconnect().cancel(); presenceRef.remove(); }
+  presenceRef = null; presenceListRef = null; connectedRef = null;
+  roomMembers = {}; liveUids = {};
+  liveUsersDialog.open && liveUsersDialog.close();
   currentRoomId = null;
+}
+
+signoutBtn.addEventListener('click', () => { cleanupRoom(); auth.signOut(); });
+leaveRoomBtn.addEventListener('click', () => {
+  cleanupRoom();
   chatView.style.display = 'none';
   roomScreen.style.display = 'flex';
   roomPwWrap.style.display = 'none';
@@ -294,9 +355,34 @@ leaveRoomBtn.addEventListener('click', () => {
   roomPwInput.value = '';
 });
 
+liveUsersBtn.addEventListener('click', () => liveUsersDialog.showModal());
+closeLiveDialog.addEventListener('click', () => liveUsersDialog.close());
+liveUsersDialog.addEventListener('click', e => { if (e.target === liveUsersDialog) liveUsersDialog.close(); });
+
+function renderLiveUsers() {
+  const ids = Object.keys(liveUids).filter(id => roomMembers[id]);
+  liveCount.textContent = ids.length + ' live';
+  liveUsersList.innerHTML = '';
+  if (!ids.length) {
+    liveUsersList.innerHTML = '<div id="live-users-empty">Nobody else is online right now.</div>';
+    return;
+  }
+  ids.forEach(id => {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    const name = document.createElement('span');
+    name.textContent = roomMembers[id].name + (id === memberId ? ' (you)' : '');
+    li.appendChild(dot);
+    li.appendChild(name);
+    liveUsersList.appendChild(li);
+  });
+}
+
 auth.onAuthStateChanged(async user => {
   if (!user) {
     if (roomsListenerRef) roomsListenerRef.off();
+    cleanupRoom();
     authScreen.style.display = 'flex';
     roomScreen.style.display = 'none';
     chatView.style.display = 'none';
@@ -422,8 +508,25 @@ async function joinRoom(roomId, roomName) {
   messagesRef.limitToLast(MAX_MESSAGES).on('child_added', s => appendMessage(s.val()));
   membersRef.on('value', s => {
     const v = s.val() || {};
+    roomMembers = v;
     memberCount = Object.keys(v).length;
     headerSub.textContent = memberCount + ' / ' + MAX_FRIENDS + ' friends here';
+    renderLiveUsers();
+  });
+
+  // ---- presence: who's actually online right now, not just ever-joined ----
+  presenceRef = db.ref('rooms/' + roomId + '/presence/' + memberId);
+  presenceListRef = db.ref('rooms/' + roomId + '/presence');
+  connectedRef = db.ref('.info/connected');
+  connectedRef.on('value', snap => {
+    if (snap.val() === true) {
+      presenceRef.onDisconnect().remove();
+      presenceRef.set(true);
+    }
+  });
+  presenceListRef.on('value', snap => {
+    liveUids = snap.val() || {};
+    renderLiveUsers();
   });
 }
 
