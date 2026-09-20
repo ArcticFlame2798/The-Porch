@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>The Porch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase (free tier) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #171B2E; --surface: #232A47; --surface-2: #1D2339;
+    --accent: #E8A33D; --accent-text: #241605;
+    --text: #F3EFE4; --text-muted: #8791B8;
+    --border: rgba(243,239,228,0.09); --danger: #E88B7D;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:'Manrope',-apple-system,sans-serif; overscroll-behavior:none; }
+  #app { display:flex; flex-direction:column; height:100vh; max-width:640px; margin:0 auto; }
+
+  header { position:relative; padding:22px 20px 16px; background:var(--surface-2);
+    border-bottom:1px solid var(--border); flex-shrink:0; overflow:hidden; }
+  header::before { content:""; position:absolute; top:-60px; left:50%; width:220px; height:220px;
+    transform:translateX(-50%); background:radial-gradient(circle, rgba(232,163,61,0.28), transparent 70%);
+    pointer-events:none; }
+  header h1 { margin:0; font-family:'Fraunces',serif; font-weight:500; font-size:22px; position:relative; }
+  header .sub { margin-top:4px; font-size:13px; color:var(--text-muted); position:relative; }
+
+  #messages { flex:1; overflow-y:auto; padding:18px 16px 10px; display:flex; flex-direction:column; }
+  .row { display:flex; flex-direction:column; max-width:78%; margin-bottom:10px; }
+  .row.me { align-self:flex-end; align-items:flex-end; }
+  .row.them { align-self:flex-start; align-items:flex-start; }
+  .sender { font-size:12px; font-weight:700; margin:0 4px 4px; }
+  .bubble { padding:9px 13px; border-radius:16px; font-size:15px; line-height:1.42;
+    word-wrap:break-word; white-space:pre-wrap; }
+  .row.them .bubble { background:var(--surface); border-bottom-left-radius:4px; }
+  .row.me .bubble { background:var(--accent); color:var(--accent-text); border-bottom-right-radius:4px; }
+  .meta { font-size:10.5px; color:var(--text-muted); margin:4px 6px 0; }
+  .day-divider { text-align:center; font-family:'Fraunces',serif; font-size:12.5px;
+    color:var(--text-muted); margin:18px 0 10px; }
+  #empty-state { margin:auto; text-align:center; color:var(--text-muted); padding:40px 30px; font-size:14.5px; line-height:1.6; }
+  #empty-state span { display:block; font-family:'Fraunces',serif; font-size:20px; color:var(--text); margin-bottom:8px; }
+
+  #composer { display:flex; gap:10px; align-items:flex-end; padding:12px 14px;
+    background:var(--surface-2); border-top:1px solid var(--border); flex-shrink:0; }
+  #composer textarea { flex:1; resize:none; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:14px; padding:10px 14px; font:inherit; font-size:15px; max-height:110px; outline:none; }
+  #composer textarea:focus { border-color:var(--accent); }
+  #composer button { background:var(--accent); color:var(--accent-text); border:none; border-radius:12px;
+    width:42px; height:42px; flex-shrink:0; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  #composer button:disabled { opacity:0.4; cursor:default; }
+
+  #gate { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:40px 28px; text-align:center; gap:18px; }
+  #gate .lantern { font-size:40px; }
+  #gate h2 { font-family:'Fraunces',serif; font-weight:500; font-size:24px; margin:0; }
+  #gate p { color:var(--text-muted); font-size:14px; margin:0; max-width:320px; line-height:1.5; }
+  #gate input { width:100%; max-width:280px; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:12px; padding:12px 14px; font:inherit; font-size:15px; text-align:center; outline:none; }
+  #gate input:focus { border-color:var(--accent); }
+  #join-btn { background:var(--accent); color:var(--accent-text); border:none; border-radius:12px;
+    padding:11px 26px; font:inherit; font-weight:700; font-size:14.5px; cursor:pointer; }
+  #join-btn:disabled { opacity:0.4; cursor:default; }
+  #gate .error { color:var(--danger); font-size:13px; min-height:16px; }
+
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="gate">
+    <div class="lantern">🏮</div>
+    <h2>Welcome to the porch</h2>
+    <p id="gate-copy">Pull up a chair. What should we call you?</p>
+    <input id="name-input" type="text" placeholder="Your name" maxlength="24" autocomplete="off">
+    <button id="join-btn">Sit down</button>
+    <div class="error" id="gate-error"></div>
+  </div>
+
+  <div id="chat-view" style="display:none; flex-direction:column; height:100%;">
+    <header>
+      <h1>The Porch</h1>
+      <div class="sub" id="header-sub">connecting…</div>
+    </header>
+    <div id="messages">
+      <div id="empty-state" style="display:none;">
+        <span>Quiet out here.</span>
+        Be the first to say something.
+      </div>
+    </div>
+    <div id="composer">
+      <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
+      <button id="send-btn" disabled>↑</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ======================================================================
+   1) PASTE YOUR OWN FIREBASE CONFIG HERE.
+   Get this by creating a free project at https://console.firebase.google.com
+   -> Project settings -> General -> "Your apps" -> Web app -> SDK config.
+   You also need to turn on "Realtime Database" in the left sidebar there.
+   ====================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDCdwIV36Xqnm7D967dOc6DA-yhAzmxMvo",
+  authDomain: "the-porch-b7fb5.firebaseapp.com",
+  projectId: "the-porch-b7fb5",
+  storageBucket: "the-porch-b7fb5.firebasestorage.app",
+  messagingSenderId: "661822715765",
+  appId: "1:661822715765:web:8ff0b8ed81455d6979853c"
+};
+/* ====================================================================== */
+
+const MAX_FRIENDS = 30;
+const MAX_MESSAGES = 400;
+const NAME_COLORS = ['#7FB4CA','#C98BDB','#8FD19E','#E88BA0','#F2C879','#9FA8E8','#8FC4B0','#D9A6E0'];
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const membersRef = db.ref('members');
+const messagesRef = db.ref('messages');
+
+const gate = document.getElementById('gate');
+const gateCopy = document.getElementById('gate-copy');
+const nameInput = document.getElementById('name-input');
+const joinBtn = document.getElementById('join-btn');
+const gateError = document.getElementById('gate-error');
+const chatView = document.getElementById('chat-view');
+const headerSub = document.getElementById('header-sub');
+const messagesEl = document.getElementById('messages');
+const emptyState = document.getElementById('empty-state');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+
+function colorFor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return NAME_COLORS[h % NAME_COLORS.length];
+}
+
+function getMemberId() {
+  let id = localStorage.getItem('porch_id');
+  if (!id) {
+    id = 'm-' + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+    localStorage.setItem('porch_id', id);
+  }
+  return id;
+}
+const memberId = getMemberId();
+let memberCount = 0;
+
+function appendMessage(m) {
+  const day = new Date(m.ts).toDateString();
+  if (appendMessage._lastDay !== day) {
+    const div = document.createElement('div');
+    div.className = 'day-divider';
+    div.textContent = new Date(m.ts).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    messagesEl.appendChild(div);
+    appendMessage._lastDay = day;
+    appendMessage._lastSender = null;
+  }
+  emptyState.style.display = 'none';
+  const mine = m.memberId === memberId;
+  const row = document.createElement('div');
+  row.className = 'row ' + (mine ? 'me' : 'them');
+  if (!mine && m.memberId !== appendMessage._lastSender) {
+    const sender = document.createElement('div');
+    sender.className = 'sender';
+    sender.style.color = m.color || colorFor(m.memberId);
+    sender.textContent = m.name;
+    row.appendChild(sender);
+  }
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = m.text;
+  row.appendChild(bubble);
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = new Date(m.ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  row.appendChild(meta);
+  messagesEl.appendChild(row);
+  appendMessage._lastSender = m.memberId;
+
+  const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 160;
+  if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function updateHeader() {
+  headerSub.textContent = memberCount + ' / ' + MAX_FRIENDS + ' friends here';
+}
+
+function enterChat(name) {
+  localStorage.setItem('porch_name', name);
+  gate.style.display = 'none';
+  chatView.style.display = 'flex';
+  msgInput.focus();
+
+  messagesRef.limitToLast(MAX_MESSAGES).on('child_added', snap => appendMessage(snap.val()));
+
+  membersRef.on('value', snap => {
+    const val = snap.val() || {};
+    memberCount = Object.keys(val).length;
+    updateHeader();
+  });
+}
+
+async function join() {
+  const name = nameInput.value.trim();
+  if (!name) { gateError.textContent = 'A name would help.'; return; }
+  joinBtn.disabled = true;
+  gateError.textContent = '';
+  try {
+    const snap = await membersRef.once('value');
+    const val = snap.val() || {};
+    const already = !!val[memberId];
+    const count = Object.keys(val).length;
+    if (!already && count >= MAX_FRIENDS) {
+      gateError.textContent = 'The porch is full (' + MAX_FRIENDS + ' friends). Ask someone to make room.';
+      joinBtn.disabled = false;
+      return;
+    }
+    await membersRef.child(memberId).set({ name, color: colorFor(memberId), joinedAt: Date.now() });
+    enterChat(name);
+  } catch (e) {
+    gateError.textContent = "Couldn't connect. Check the setup (Firebase config / database rules).";
+    joinBtn.disabled = false;
+  }
+}
+
+joinBtn.addEventListener('click', join);
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+
+const savedName = localStorage.getItem('porch_name');
+if (savedName) nameInput.value = savedName;
+
+function autoGrow() {
+  msgInput.style.height = 'auto';
+  msgInput.style.height = Math.min(msgInput.scrollHeight, 110) + 'px';
+}
+msgInput.addEventListener('input', () => {
+  sendBtn.disabled = !msgInput.value.trim();
+  autoGrow();
+});
+msgInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+sendBtn.addEventListener('click', send);
+
+function send() {
+  const text = msgInput.value.trim();
+  if (!text) return;
+  sendBtn.disabled = true;
+  msgInput.value = '';
+  autoGrow();
+  const name = localStorage.getItem('porch_name') || 'Someone';
+  messagesRef.push({
+    memberId, name, color: colorFor(memberId),
+    text, ts: Date.now()
+  }).catch(() => {
+    msgInput.value = text;
+    sendBtn.disabled = false;
+  });
+}
+</script>
+</body>
+</html>
