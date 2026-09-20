@@ -145,7 +145,8 @@
 
   <!-- ROOM SCREEN -->
   <div id="room-screen" class="screen" style="display:none;">
-    <div style="width:100%; display:flex; justify-content:flex-end;">
+    <div style="width:100%; display:flex; justify-content:flex-end; gap:16px;">
+      <button id="profile-btn" class="link-btn">Profile</button>
       <button id="signout-btn" class="link-btn">Sign out</button>
     </div>
     <div class="lantern">🚪</div>
@@ -168,6 +169,30 @@
         <div class="error" id="create-room-error"></div>
       </div>
     </details>
+  </div>
+
+  <!-- PROFILE SCREEN -->
+  <div id="profile-screen" class="screen" style="display:none;">
+    <div style="width:100%; display:flex; justify-content:flex-start;">
+      <button id="profile-back-btn" class="link-btn">← Back</button>
+    </div>
+    <div class="lantern">👤</div>
+    <h2>Your profile <span id="profile-admin-badge" class="admin-badge" style="display:none;">admin</span></h2>
+    <p class="hint" id="profile-email"></p>
+
+    <div class="form-stack">
+      <input id="profile-name" class="field" type="text" placeholder="Display name" maxlength="24">
+      <button id="profile-save-name-btn" class="btn secondary">Save name</button>
+      <div class="error" id="profile-name-error"></div>
+    </div>
+
+    <div class="form-stack" style="border-top:1px solid var(--border); padding-top:18px; margin-top:6px;">
+      <p class="hint" style="margin:0;">Change your account password</p>
+      <input id="profile-current-pw" class="field" type="password" placeholder="Current password" autocomplete="off">
+      <input id="profile-new-pw" class="field" type="password" placeholder="New password" autocomplete="off">
+      <button id="profile-change-pw-btn" class="btn secondary">Change password</button>
+      <div class="error" id="profile-pw-error"></div>
+    </div>
   </div>
 
   <!-- CHAT VIEW -->
@@ -217,6 +242,7 @@
 const firebaseConfig = {
   apiKey: "AIzaSyDCdwIV36Xqnm7D967dOc6DA-yhAzmxMvo",
   authDomain: "the-porch-b7fb5.firebaseapp.com",
+  databaseURL: "https://the-porch-b7fb5-default-rtdb.firebaseio.com",
   projectId: "the-porch-b7fb5",
   storageBucket: "the-porch-b7fb5.firebasestorage.app",
   messagingSenderId: "661822715765",
@@ -224,7 +250,6 @@ const firebaseConfig = {
 };
 /* ====================================================================== */
 
-const MAX_FRIENDS = 30;
 const MAX_MESSAGES = 400;
 const NAME_COLORS = ['#7FB4CA','#C98BDB','#8FD19E','#E88BA0','#F2C879','#9FA8E8','#8FC4B0','#D9A6E0'];
 
@@ -272,6 +297,18 @@ const newRoomPw = document.getElementById('new-room-pw');
 const createRoomBtn = document.getElementById('create-room-btn');
 const createRoomError = document.getElementById('create-room-error');
 const signoutBtn = document.getElementById('signout-btn');
+const profileBtn = document.getElementById('profile-btn');
+const profileScreen = document.getElementById('profile-screen');
+const profileBackBtn = document.getElementById('profile-back-btn');
+const profileEmail = document.getElementById('profile-email');
+const profileName = document.getElementById('profile-name');
+const profileAdminBadge = document.getElementById('profile-admin-badge');
+const profileSaveNameBtn = document.getElementById('profile-save-name-btn');
+const profileNameError = document.getElementById('profile-name-error');
+const profileCurrentPw = document.getElementById('profile-current-pw');
+const profileNewPw = document.getElementById('profile-new-pw');
+const profileChangePwBtn = document.getElementById('profile-change-pw-btn');
+const profilePwError = document.getElementById('profile-pw-error');
 
 const chatView = document.getElementById('chat-view');
 const roomTitle = document.getElementById('room-title');
@@ -346,6 +383,67 @@ function cleanupRoom() {
 }
 
 signoutBtn.addEventListener('click', () => { cleanupRoom(); auth.signOut(); });
+
+// =======================================================================
+// PROFILE
+// =======================================================================
+profileBtn.addEventListener('click', () => {
+  const user = auth.currentUser;
+  profileName.value = user.displayName || '';
+  profileEmail.textContent = user.email;
+  profileAdminBadge.style.display = isAdmin ? 'inline-block' : 'none';
+  profileCurrentPw.value = '';
+  profileNewPw.value = '';
+  profileNameError.textContent = '';
+  profilePwError.textContent = '';
+  roomScreen.style.display = 'none';
+  profileScreen.style.display = 'flex';
+});
+profileBackBtn.addEventListener('click', () => {
+  profileScreen.style.display = 'none';
+  roomScreen.style.display = 'flex';
+});
+
+profileSaveNameBtn.addEventListener('click', async () => {
+  const name = profileName.value.trim();
+  profileNameError.textContent = '';
+  if (!name) { profileNameError.textContent = 'Enter a display name.'; return; }
+  profileSaveNameBtn.disabled = true;
+  try {
+    const user = auth.currentUser;
+    await user.updateProfile({ displayName: name });
+    await db.ref('users/' + user.uid).update({ name });
+    profileNameError.textContent = '';
+  } catch (e) {
+    profileNameError.textContent = "Couldn't save. Try again.";
+  }
+  profileSaveNameBtn.disabled = false;
+});
+
+profileChangePwBtn.addEventListener('click', async () => {
+  const currentPw = profileCurrentPw.value;
+  const newPw = profileNewPw.value;
+  profilePwError.textContent = '';
+  if (!currentPw || !newPw) { profilePwError.textContent = 'Enter your current and new password.'; return; }
+  if (newPw.length < 6) { profilePwError.textContent = 'New password should be at least 6 characters.'; return; }
+  profileChangePwBtn.disabled = true;
+  try {
+    const user = auth.currentUser;
+    const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPw);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(newPw);
+    profileCurrentPw.value = '';
+    profileNewPw.value = '';
+    profilePwError.style.color = '#6FCF97';
+    profilePwError.textContent = 'Password changed.';
+  } catch (e) {
+    profilePwError.style.color = '';
+    profilePwError.textContent = e.code === 'auth/wrong-password'
+      ? 'Current password is incorrect.'
+      : "Couldn't change password. Try again.";
+  }
+  profileChangePwBtn.disabled = false;
+});
 leaveRoomBtn.addEventListener('click', () => {
   cleanupRoom();
   chatView.style.display = 'none';
@@ -385,10 +483,12 @@ auth.onAuthStateChanged(async user => {
     cleanupRoom();
     authScreen.style.display = 'flex';
     roomScreen.style.display = 'none';
+    profileScreen.style.display = 'none';
     chatView.style.display = 'none';
     return;
   }
   authScreen.style.display = 'none';
+  profileScreen.style.display = 'none';
   roomScreen.style.display = 'flex';
 
   const adminSnap = await db.ref('admins/' + user.uid).once('value');
@@ -486,10 +586,6 @@ async function joinRoom(roomId, roomName) {
 
   const snap = await membersRef.once('value');
   const val = snap.val() || {};
-  if (!val[memberId] && Object.keys(val).length >= MAX_FRIENDS) {
-    roomError.textContent = 'That room is full (' + MAX_FRIENDS + ' friends).';
-    return;
-  }
   await membersRef.child(memberId).set({
     name: user.displayName || 'Someone',
     color: colorFor(memberId),
@@ -510,7 +606,7 @@ async function joinRoom(roomId, roomName) {
     const v = s.val() || {};
     roomMembers = v;
     memberCount = Object.keys(v).length;
-    headerSub.textContent = memberCount + ' / ' + MAX_FRIENDS + ' friends here';
+    headerSub.textContent = memberCount + ' friend' + (memberCount === 1 ? '' : 's') + ' here';
     renderLiveUsers();
   });
 
