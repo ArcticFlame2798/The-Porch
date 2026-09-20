@@ -15,21 +15,25 @@
 
 <style>
   :root {
-    --bg: #171B2E; --surface: #232A47; --surface-2: #1D2339;
-    --accent: #E8A33D; --accent-text: #241605;
-    --text: #F3EFE4; --text-muted: #8791B8;
-    --border: rgba(243,239,228,0.09); --danger: #E88B7D;
+    --bg: #15211A; --surface: #223228; --surface-2: #1A2620;
+    --accent: #C9813F; --accent-text: #2A1608;
+    --text: #F0E6D2; --text-muted: #8FA391;
+    --border: rgba(240,230,210,0.09); --danger: #E0876E;
   }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
     font-family:'Manrope',-apple-system,sans-serif; overscroll-behavior:none; }
-  #app { display:flex; flex-direction:column; height:100vh; max-width:640px; margin:0 auto; }
+
+  #bg-scene { position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+
+  #app { display:flex; flex-direction:column; height:100vh; max-width:640px; margin:0 auto;
+    position:relative; z-index:1; background:transparent; }
 
   header { position:relative; padding:18px 20px 14px; background:var(--surface-2);
     border-bottom:1px solid var(--border); flex-shrink:0; overflow:hidden;
     display:flex; align-items:center; justify-content:space-between; gap:10px; }
   header::before { content:""; position:absolute; top:-60px; left:50%; width:220px; height:220px;
-    transform:translateX(-50%); background:radial-gradient(circle, rgba(232,163,61,0.28), transparent 70%);
+    transform:translateX(-50%); background:radial-gradient(circle, rgba(201,129,63,0.24), transparent 70%);
     pointer-events:none; }
   header h1 { margin:0; font-family:'Fraunces',serif; font-weight:500; font-size:22px; position:relative; }
   header .sub { margin-top:3px; font-size:12.5px; color:var(--text-muted); position:relative; }
@@ -38,10 +42,16 @@
 
   /* ---------- Screens ---------- */
   .screen { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:36px 26px; text-align:center; gap:16px; overflow-y:auto; }
+    padding:36px 26px; text-align:center; gap:16px; overflow-y:auto;
+    background:rgba(23,27,46,0.72); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
   .screen .lantern { font-size:38px; }
   .screen h2 { font-family:'Fraunces',serif; font-weight:500; font-size:23px; margin:0; }
   .screen p.hint { color:var(--text-muted); font-size:13.5px; margin:0; max-width:320px; line-height:1.5; }
+  #auth-submit { background:#e9a241; }
+
+  #auth-email, #auth-password { background:#e8f0fd; color:#171B2E; }
+  #auth-email::placeholder, #auth-password::placeholder { color:#5A6B8C; }
+
   .field { width:100%; max-width:280px; background:var(--surface); border:1px solid var(--border);
     color:var(--text); border-radius:12px; padding:11px 14px; font:inherit; font-size:15px;
     text-align:center; outline:none; }
@@ -121,7 +131,7 @@
   }
   #live-users-list { list-style: none; margin: 0; padding: 6px; max-height: 300px; overflow-y: auto; }
   #live-users-list li { display: flex; align-items: center; gap:9px; padding: 8px 8px; font-size:14.5px; border-radius:10px; }
-  #live-users-list li .dot { width:8px; height:8px; border-radius:50%; background:#6FCF97; flex-shrink:0; }
+  #live-users-list li .dot { width:8px; height:8px; border-radius:50%; background:#8FBF6F; flex-shrink:0; }
   #live-users-empty { color: var(--text-muted); font-size: 13.5px; padding: 14px; text-align:center; }
 
   .avatar-picker { display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; }
@@ -131,12 +141,101 @@
   .avatar-emoji { border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
     vertical-align:middle; margin-right:6px; flex-shrink:0; }
   .avatar-fallback { border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
-    font-size:10.5px; font-weight:700; color:#171B2E; vertical-align:middle; margin-right:6px; flex-shrink:0; }
+    font-size:10.5px; font-weight:700; color:#15211A; vertical-align:middle; margin-right:6px; flex-shrink:0; }
   .sender { display:flex; align-items:center; }
   #live-users-list li .dot { margin-left:-2px; }
 </style>
 </head>
 <body>
+
+<svg id="bg-scene" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0F1226"/>
+      <stop offset="50%" stop-color="#1B2340"/>
+      <stop offset="100%" stop-color="#2C2A4C"/>
+    </linearGradient>
+    <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F3EFE4" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#F3EFE4" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#F3EFE4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bulbGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E8A33D" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#E8A33D" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#E8A33D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="800" height="900" fill="url(#skyGrad)"/>
+
+  <!-- stars -->
+  <g fill="#F3EFE4">
+    <circle cx="52" cy="58" r="1.6" opacity="0.7"/>
+    <circle cx="128" cy="140" r="1.1" opacity="0.5"/>
+    <circle cx="210" cy="70" r="1.4" opacity="0.6"/>
+    <circle cx="300" cy="160" r="1" opacity="0.45"/>
+    <circle cx="365" cy="90" r="1.6" opacity="0.65"/>
+    <circle cx="430" cy="200" r="1.1" opacity="0.5"/>
+    <circle cx="90" cy="230" r="1.3" opacity="0.55"/>
+    <circle cx="250" cy="40" r="1.2" opacity="0.5"/>
+    <circle cx="480" cy="60" r="1.4" opacity="0.6"/>
+    <circle cx="35" cy="170" r="1" opacity="0.4"/>
+    <circle cx="700" cy="230" r="1.3" opacity="0.55"/>
+    <circle cx="760" cy="90" r="1.5" opacity="0.6"/>
+    <circle cx="140" cy="300" r="1" opacity="0.4"/>
+    <circle cx="600" cy="280" r="1.2" opacity="0.5"/>
+    <circle cx="20" cy="300" r="1.1" opacity="0.45"/>
+    <circle cx="330" cy="260" r="1" opacity="0.4"/>
+  </g>
+
+  <!-- moon -->
+  <circle cx="630" cy="120" r="95" fill="url(#moonGlow)"/>
+  <circle cx="630" cy="120" r="36" fill="#F3EFE4" opacity="0.92"/>
+  <circle cx="648" cy="108" r="34" fill="#171B2E" opacity="0.88"/>
+
+  <!-- distant hills -->
+  <path d="M0,600 Q160,555 340,585 T800,565 V900 H0 Z" fill="#1D2339" opacity="0.85"/>
+  <path d="M0,650 Q220,610 420,635 T800,615 V900 H0 Z" fill="#171B2E" opacity="0.9"/>
+
+  <!-- string lights, swag 1 -->
+  <path d="M-20,560 Q200,650 400,575 T820,560" stroke="#3A3F63" stroke-width="3" fill="none" opacity="0.75"/>
+  <g>
+    <circle cx="30"  cy="576" r="20" fill="url(#bulbGlow)"/><circle cx="30"  cy="576" r="4.5" fill="#F2C879"/>
+    <circle cx="130" cy="610" r="20" fill="url(#bulbGlow)"/><circle cx="130" cy="610" r="4.5" fill="#F2C879"/>
+    <circle cx="230" cy="632" r="20" fill="url(#bulbGlow)"/><circle cx="230" cy="632" r="4.5" fill="#F2C879"/>
+    <circle cx="330" cy="622" r="20" fill="url(#bulbGlow)"/><circle cx="330" cy="622" r="4.5" fill="#F2C879"/>
+    <circle cx="430" cy="592" r="20" fill="url(#bulbGlow)"/><circle cx="430" cy="592" r="4.5" fill="#F2C879"/>
+    <circle cx="530" cy="580" r="20" fill="url(#bulbGlow)"/><circle cx="530" cy="580" r="4.5" fill="#F2C879"/>
+    <circle cx="630" cy="573" r="20" fill="url(#bulbGlow)"/><circle cx="630" cy="573" r="4.5" fill="#F2C879"/>
+    <circle cx="730" cy="565" r="20" fill="url(#bulbGlow)"/><circle cx="730" cy="565" r="4.5" fill="#F2C879"/>
+  </g>
+
+  <!-- porch railing silhouette -->
+  <g fill="#0F1226">
+    <rect x="0" y="760" width="800" height="800" opacity="0"/>
+    <rect x="0" y="760" width="800" height="16"/>
+    <rect x="14"  y="760" width="10" height="110"/>
+    <rect x="60"  y="760" width="10" height="110"/>
+    <rect x="106" y="760" width="10" height="110"/>
+    <rect x="152" y="760" width="10" height="110"/>
+    <rect x="198" y="760" width="10" height="110"/>
+    <rect x="244" y="760" width="10" height="110"/>
+    <rect x="290" y="760" width="10" height="110"/>
+    <rect x="336" y="760" width="10" height="110"/>
+    <rect x="382" y="760" width="10" height="110"/>
+    <rect x="428" y="760" width="10" height="110"/>
+    <rect x="474" y="760" width="10" height="110"/>
+    <rect x="520" y="760" width="10" height="110"/>
+    <rect x="566" y="760" width="10" height="110"/>
+    <rect x="612" y="760" width="10" height="110"/>
+    <rect x="658" y="760" width="10" height="110"/>
+    <rect x="704" y="760" width="10" height="110"/>
+    <rect x="750" y="760" width="10" height="110"/>
+    <rect x="0" y="850" width="800" height="50"/>
+  </g>
+</svg>
+
 <div id="app">
 
   <!-- AUTH SCREEN -->
@@ -213,7 +312,7 @@
   </div>
 
   <!-- CHAT VIEW -->
-  <div id="chat-view" style="display:none; flex-direction:column; height:100%;">
+  <div id="chat-view" style="display:none; flex-direction:column; height:100%; background:var(--bg);">
     <header>
       <div>
         <h1 id="room-title">The Porch</h1>
@@ -221,7 +320,7 @@
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
         <button id="live-users-btn" class="link-btn" style="text-decoration:none; display:flex; align-items:center; gap:5px;">
-          <span style="width:7px; height:7px; border-radius:50%; background:#6FCF97; display:inline-block;"></span>
+          <span style="width:7px; height:7px; border-radius:50%; background:#8FBF6F; display:inline-block;"></span>
           <span id="live-count">0 live</span>
         </button>
         <button id="leave-room-btn" class="link-btn">Leave room</button>
@@ -516,7 +615,7 @@ profileChangePwBtn.addEventListener('click', async () => {
     await user.updatePassword(newPw);
     profileCurrentPw.value = '';
     profileNewPw.value = '';
-    profilePwError.style.color = '#6FCF97';
+    profilePwError.style.color = '#8FBF6F';
     profilePwError.textContent = 'Password changed.';
   } catch (e) {
     profilePwError.style.color = '';
