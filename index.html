@@ -241,6 +241,7 @@
           <label><input type="radio" name="req-visibility" value="global" checked> Global (listed)</label>
           <label><input type="radio" name="req-visibility" value="private"> Private (invite-only)</label>
         </div>
+        <input id="req-room-referral" class="field" type="text" placeholder="Referral code (optional)" maxlength="20">
         <button id="req-room-btn" class="btn secondary">Send request</button>
         <div class="error" id="req-room-error"></div>
         <div class="success" id="req-room-success"></div>
@@ -257,6 +258,7 @@
           <label><input type="radio" name="new-visibility" value="private"> Private</label>
         </div>
         <input id="new-room-admin-email" class="field" type="email" placeholder="Room admin's account email">
+        <input id="new-room-referral" class="field" type="text" placeholder="Referral code (optional)" maxlength="20">
         <button id="create-room-btn" class="btn secondary">Create room</button>
         <div class="error" id="create-room-error"></div>
       </div>
@@ -373,7 +375,7 @@ const firebaseConfig = {
 // no signup — the FIRST email to a new address requires you to click a
 // one-time confirmation link FormSubmit sends you before it will deliver
 // future submissions.
-const SITE_ADMIN_EMAIL = "eb3736d8fb0ba1522ec324c6dab9bf01";
+const SITE_ADMIN_EMAIL = "PASTE_YOUR_EMAIL_HERE";
 /* ====================================================================== */
 
 const MAX_MESSAGES = 400;
@@ -453,12 +455,14 @@ const redeemCodeBtn = document.getElementById('redeem-code-btn');
 const redeemError = document.getElementById('redeem-error');
 const reqRoomName = document.getElementById('req-room-name');
 const reqRoomPurpose = document.getElementById('req-room-purpose');
+const reqRoomReferral = document.getElementById('req-room-referral');
 const reqRoomBtn = document.getElementById('req-room-btn');
 const reqRoomError = document.getElementById('req-room-error');
 const reqRoomSuccess = document.getElementById('req-room-success');
 const newRoomName = document.getElementById('new-room-name');
 const newRoomPurpose = document.getElementById('new-room-purpose');
 const newRoomAdminEmail = document.getElementById('new-room-admin-email');
+const newRoomReferral = document.getElementById('new-room-referral');
 const createRoomBtn = document.getElementById('create-room-btn');
 const createRoomError = document.getElementById('create-room-error');
 const signoutBtn = document.getElementById('signout-btn');
@@ -700,6 +704,7 @@ reqRoomBtn.addEventListener('click', async () => {
   const name = reqRoomName.value.trim();
   const purpose = reqRoomPurpose.value.trim();
   const visibility = document.querySelector('input[name="req-visibility"]:checked').value;
+  const referral = reqRoomReferral.value.trim();
   reqRoomError.textContent = ''; reqRoomSuccess.textContent = '';
   if (!name) { reqRoomError.textContent = 'Enter a room name.'; return; }
   if (SITE_ADMIN_EMAIL === 'PASTE_YOUR_EMAIL_HERE') { reqRoomError.textContent = 'The site owner hasn\'t set up request emails yet.'; return; }
@@ -715,12 +720,13 @@ reqRoomBtn.addEventListener('click', async () => {
         requesterEmail: user.email || '',
         roomName: name,
         purpose: purpose,
-        visibility: visibility
+        visibility: visibility,
+        referralCode: referral || '(none requested)'
       })
     });
     if (!res.ok) throw new Error('send failed');
     reqRoomSuccess.textContent = 'Sent! The admin will follow up.';
-    reqRoomName.value = ''; reqRoomPurpose.value = '';
+    reqRoomName.value = ''; reqRoomPurpose.value = ''; reqRoomReferral.value = '';
   } catch (e) {
     reqRoomError.textContent = "Couldn't send the request. Try again later.";
   }
@@ -735,6 +741,7 @@ createRoomBtn.addEventListener('click', async () => {
   const purpose = newRoomPurpose.value.trim();
   const visibility = document.querySelector('input[name="new-visibility"]:checked').value;
   const adminEmail = newRoomAdminEmail.value.trim().toLowerCase();
+  const referral = newRoomReferral.value.trim().toUpperCase();
   createRoomError.textContent = '';
   if (!name || !adminEmail) { createRoomError.textContent = 'Enter a room name and the room admin\'s email.'; return; }
   createRoomBtn.disabled = true;
@@ -744,6 +751,10 @@ createRoomBtn.addEventListener('click', async () => {
     const idx = idxSnap.val();
     if (!idx) { createRoomError.textContent = 'No account found with that email — they need to sign up first.'; createRoomBtn.disabled = false; return; }
     const assignedUid = idx.uid;
+    if (referral) {
+      const existing = await db.ref('referralCodes/' + referral).once('value');
+      if (existing.exists()) { createRoomError.textContent = 'That referral code is already taken — pick another.'; createRoomBtn.disabled = false; return; }
+    }
     const roomId = db.ref('rooms').push().key;
     const updates = {
       ['rooms/' + roomId]: { name, purpose, visibility, roomAdmin: assignedUid, createdAt: Date.now() },
@@ -753,11 +764,15 @@ createRoomBtn.addEventListener('click', async () => {
     if (visibility === 'global') {
       updates['globalRoomsIndex/' + roomId] = { name, purpose };
     }
+    if (referral) {
+      updates['referralCodes/' + referral] = { roomId, used: false, createdBy: assignedUid, createdAt: Date.now() };
+    }
     await db.ref().update(updates);
-    newRoomName.value = ''; newRoomPurpose.value = ''; newRoomAdminEmail.value = '';
+    newRoomName.value = ''; newRoomPurpose.value = ''; newRoomAdminEmail.value = ''; newRoomReferral.value = '';
     loadRoomScreen();
   } catch (e) {
-    createRoomError.textContent = "Couldn't create the room. Check your setup (rules/admin flag).";
+    console.error('create room failed:', e);
+    createRoomError.textContent = "Couldn't create the room: " + (e.message || e.code || e);
   }
   createRoomBtn.disabled = false;
 });
