@@ -375,7 +375,9 @@ const firebaseConfig = {
 // no signup — the FIRST email to a new address requires you to click a
 // one-time confirmation link FormSubmit sends you before it will deliver
 // future submissions.
-eb3736d8fb0ba1522ec324c6dab9bf01
+// FormSubmit's privacy-mode form ID (from the "Activate Form" email) —
+// keeps your real email address out of this public page's source code.
+const SITE_ADMIN_EMAIL = "eb3736d8fb0ba1522ec324c6dab9bf01";
 /* ====================================================================== */
 
 const MAX_MESSAGES = 400;
@@ -707,11 +709,11 @@ reqRoomBtn.addEventListener('click', async () => {
   const referral = reqRoomReferral.value.trim();
   reqRoomError.textContent = ''; reqRoomSuccess.textContent = '';
   if (!name) { reqRoomError.textContent = 'Enter a room name.'; return; }
-  if (SITE_ADMIN_EMAIL === 'PASTE_YOUR_EMAIL_HERE') { reqRoomError.textContent = 'The site owner hasn\'t set up request emails yet.'; return; }
+
   reqRoomBtn.disabled = true;
   try {
     const user = auth.currentUser;
-    const res = await fetch('https://formsubmit.co/ajax/' + encodeURIComponent(SITE_ADMIN_EMAIL), {
+    const res = await fetch('https://formsubmit.co/ajax/' + SITE_ADMIN_EMAIL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
