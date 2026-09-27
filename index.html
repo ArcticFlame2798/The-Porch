@@ -759,8 +759,10 @@ createRoomBtn.addEventListener('click', async () => {
     }
     const roomId = db.ref('rooms').push().key;
     const updates = {
-      ['rooms/' + roomId]: { name, purpose, visibility, roomAdmin: assignedUid, createdAt: Date.now() },
-      ['rooms/' + roomId + '/members/' + assignedUid]: { joinedAt: Date.now() },
+      ['rooms/' + roomId]: {
+        name, purpose, visibility, roomAdmin: assignedUid, createdAt: Date.now(),
+        members: { [assignedUid]: { joinedAt: Date.now() } }
+      },
       ['userRooms/' + assignedUid + '/' + roomId]: true
     };
     if (visibility === 'global') {
