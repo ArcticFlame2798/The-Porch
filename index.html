@@ -139,6 +139,11 @@
   #composer .attach-btn { background:transparent; color:var(--text); border:1px solid var(--border); }
   .room-topic { width:100%; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); color:var(--text-muted); font-size:12.5px; text-align:left; }
   .typing-indicator { min-height:18px; padding:0 18px 4px; color:var(--text-muted); font-size:11.5px; }
+  .pinned-messages { width:100%; background:var(--surface-2); border-bottom:1px solid var(--border); padding:7px 14px; }
+  .pin-item { display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:9px; background:var(--surface); margin:3px 0; font-size:12px; }
+  .pin-item .pin-text { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pin-item .pin-meta { color:var(--text-muted); font-size:10px; white-space:nowrap; }
+  .pin-btn { border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:11px; padding:2px 4px; }
   .message-tools { display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; }
   .message-action { border:none; background:transparent; color:var(--text-muted); cursor:pointer; font:inherit; font-size:11px; padding:2px 4px; }
   .reaction { border:1px solid var(--border); background:var(--surface-2); color:var(--text); border-radius:12px; padding:2px 6px; font-size:11px; cursor:pointer; }
@@ -257,6 +262,9 @@
           <label><input type="radio" name="req-visibility" value="global" checked> Global (listed)</label>
           <label><input type="radio" name="req-visibility" value="private"> Private (invite-only)</label>
         </div>
+        <div class="radio-row">
+          <label><input type="checkbox" id="req-room-readonly"> Read-only room</label>
+        </div>
         <input id="req-room-referral" class="field" type="text" placeholder="Referral code (optional)" maxlength="20">
         <button id="req-room-btn" class="btn secondary">Send request</button>
         <div class="error" id="req-room-error"></div>
@@ -272,6 +280,9 @@
         <div class="radio-row">
           <label><input type="radio" name="new-visibility" value="global" checked> Global</label>
           <label><input type="radio" name="new-visibility" value="private"> Private</label>
+        </div>
+        <div class="radio-row">
+          <label><input type="checkbox" id="new-room-readonly"> Read-only room</label>
         </div>
         <input id="new-room-admin-email" class="field" type="email" placeholder="Room admin's account email">
         <input id="new-room-referral" class="field" type="text" placeholder="Referral code (optional)" maxlength="20">
@@ -298,12 +309,24 @@
         <div id="manage-code-box" class="code-box" style="display:none;"></div>
       </div>
       <div class="dialog-section">
+        <h4>Administrators</h4>
+        <div id="manage-admins-list"></div>
+      </div>
+      <div class="dialog-section">
         <h4>Members</h4>
         <div id="manage-members-list"></div>
       </div>
       <div class="dialog-section">
         <h4>Banned</h4>
         <div id="manage-banned-list"></div>
+      </div>
+      <div class="dialog-section">
+        <h4>Room settings</h4>
+        <div class="radio-row" style="margin-bottom:8px;">
+          <label><input type="checkbox" id="manage-readonly"> Read-only room</label>
+        </div>
+        <button id="save-readonly-btn" class="btn small secondary">Save room setting</button>
+        <div id="manage-readonly-error" class="error"></div>
       </div>
       <div class="dialog-section">
         <h4>Room topic</h4>
@@ -361,6 +384,7 @@
       </div>
     </header>
     <div id="room-topic" class="room-topic" style="display:none;"></div>
+    <div id="pinned-messages" class="pinned-messages" style="display:none;"></div>
     <dialog id="live-users-dialog" class="sheet">
       <div class="dialog-head">
         <span>Live now</span>
@@ -497,12 +521,14 @@ const redeemError = document.getElementById('redeem-error');
 const reqRoomName = document.getElementById('req-room-name');
 const reqRoomPurpose = document.getElementById('req-room-purpose');
 const reqRoomReferral = document.getElementById('req-room-referral');
+const reqRoomReadonly = document.getElementById('req-room-readonly');
 const reqRoomBtn = document.getElementById('req-room-btn');
 const reqRoomError = document.getElementById('req-room-error');
 const reqRoomSuccess = document.getElementById('req-room-success');
 const newRoomName = document.getElementById('new-room-name');
 const newRoomPurpose = document.getElementById('new-room-purpose');
 const newRoomAdminEmail = document.getElementById('new-room-admin-email');
+const newRoomReadonly = document.getElementById('new-room-readonly');
 const newRoomReferral = document.getElementById('new-room-referral');
 const createRoomBtn = document.getElementById('create-room-btn');
 const createRoomError = document.getElementById('create-room-error');
@@ -513,6 +539,10 @@ const manageRoomTitle = document.getElementById('manage-room-title');
 const manageCloseBtn = document.getElementById('manage-close-btn');
 const manageRequestsList = document.getElementById('manage-requests-list');
 const manageMembersList = document.getElementById('manage-members-list');
+const manageAdminsList = document.getElementById('manage-admins-list');
+const manageReadonly = document.getElementById('manage-readonly');
+const saveReadonlyBtn = document.getElementById('save-readonly-btn');
+const manageReadonlyError = document.getElementById('manage-readonly-error');
 const genCodeBtn = document.getElementById('gen-code-btn');
 const manageCodeBox = document.getElementById('manage-code-box');
 const manageBannedList = document.getElementById('manage-banned-list');
@@ -550,6 +580,7 @@ const liveUsersDialog = document.getElementById('live-users-dialog');
 const liveUsersList = document.getElementById('live-users-list');
 const closeLiveDialog = document.getElementById('close-live-dialog');
 const roomTopicEl = document.getElementById('room-topic');
+const pinnedMessagesEl = document.getElementById('pinned-messages');
 const typingIndicator = document.getElementById('typing-indicator');
 const imageInput = document.getElementById('image-input');
 const attachImageBtn = document.getElementById('attach-image-btn');
@@ -557,7 +588,7 @@ const attachImageBtn = document.getElementById('attach-image-btn');
 // ---------- state ----------
 let isSignupMode = false;
 let isAdmin = false;
-let currentRoomId = null, currentRoomAdmin = null;
+let currentRoomId = null, currentRoomAdmin = null, currentMainAdmin = null;
 let membersRef = null, messagesRef = null;
 let presenceRef = null, presenceListRef = null, connectedRef = null;
 let roomMembers = {};  // uid -> {joinedAt}
@@ -565,6 +596,7 @@ let liveUids = {};
 let memberId = null, memberCount = 0;
 let manageRoomId = null;
 let currentRoomData = null;
+let pinnedRef = null;
 let typingRef = null, typingListRef = null, typingTimer = null;
 let lastMessageSentAt = 0;
 let pendingImageData = null;
@@ -632,6 +664,7 @@ function cleanupRoom() {
   if (presenceListRef) presenceListRef.off();
   if (connectedRef) connectedRef.off();
   if (typingListRef) typingListRef.off();
+  if (pinnedRef) pinnedRef.off();
   if (typingRef) { typingRef.onDisconnect().remove(); typingRef.remove(); }
   Object.values(messageReactionRefs).forEach(ref => ref.off());
   messageReactionRefs = {};
@@ -673,6 +706,34 @@ auth.onAuthStateChanged(async user => {
   loadRoomScreen();
 });
 
+function roomAdmins(room) {
+  const map = { ...(room && room.admins ? room.admins : {}) };
+  if (room && room.roomAdmin) map[room.roomAdmin] = true;
+  return map;
+}
+function isRoomAdminFor(room, uid) {
+  if (!uid) return false;
+  const admins = roomAdmins(room);
+  return !!admins[uid] || (room && room.roomAdmin === uid);
+}
+function isMainAdminFor(room, uid) {
+  return !!uid && !!room && (room.mainAdmin === uid || (!room.mainAdmin && room.roomAdmin === uid));
+}
+function isCurrentRoomAdmin() { return isRoomAdminFor(currentRoomData, memberId) || isAdmin; }
+function isCurrentMainAdmin() { return isMainAdminFor(currentRoomData, memberId) || isAdmin; }
+function pinDurationMs(value) {
+  return ({'1h':3600000,'1d':86400000,'7d':604800000,'1mo':2592000000,'1y':31536000000,'permanent':0})[value] ?? 86400000;
+}
+function pinDurationLabel(ms) {
+  if (!ms) return 'permanent';
+  if (ms === 3600000) return '1 hour';
+  if (ms === 86400000) return '1 day';
+  if (ms === 604800000) return '7 days';
+  if (ms === 2592000000) return '1 month';
+  if (ms === 31536000000) return '1 year';
+  return 'custom';
+}
+
 // =======================================================================
 // ROOM SCREEN: your rooms + global rooms
 // =======================================================================
@@ -697,11 +758,11 @@ async function loadRoomScreen() {
     row.className = 'room-row';
     row.innerHTML =
       '<div><div class="rname">' + escapeHtml(room.name) + '</div>' +
-      '<div class="rmeta">' + (room.visibility === 'private' ? 'Private' : 'Global') +
-      (room.roomAdmin === uid ? ' · you\'re admin' : '') + '</div></div>' +
+      '<div class="rmeta">' + (room.visibility === 'private' ? 'Private' : 'Global') + (room.readOnly ? ' · Read-only' : '') +
+      (isRoomAdminFor(room, uid) ? ' · admin' : '') + '</div></div>' +
       '<div class="ractions">' +
       (pendingCount ? '<span class="badge">' + pendingCount + '</span>' : '') +
-      (room.roomAdmin === uid ? '<button class="btn small secondary" data-manage="' + roomId + '">Manage</button>' : '') +
+      (isRoomAdminFor(room, uid) || isAdmin ? '<button class="btn small secondary" data-manage="' + roomId + '">Manage</button>' : '') +
       '<button class="btn small" data-enter="' + roomId + '">Enter</button>' +
       '</div>';
     yourRoomsList.appendChild(row);
@@ -727,7 +788,8 @@ async function loadRoomScreen() {
     row.className = 'room-row';
     row.innerHTML =
       '<div><div class="rname">' + escapeHtml(info.name) + '</div>' +
-      (info.purpose ? '<div class="rmeta">' + escapeHtml(info.purpose) + '</div>' : '') + '</div>' +
+      (info.purpose ? '<div class="rmeta">' + escapeHtml(info.purpose) + '</div>' : '') +
+      (info.readOnly ? '<div class="rmeta">Read-only</div>' : '') + '</div>' +
       '<div class="ractions">' +
       '<button class="btn small secondary" data-global-enter="' + roomId + '">Enter</button>' +
       '</div>';
@@ -792,6 +854,7 @@ reqRoomBtn.addEventListener('click', async () => {
   const purpose = reqRoomPurpose.value.trim();
   const visibility = document.querySelector('input[name="req-visibility"]:checked').value;
   const referral = reqRoomReferral.value.trim();
+  const readOnly = reqRoomReadonly.checked;
   reqRoomError.textContent = ''; reqRoomSuccess.textContent = '';
   if (!name) { reqRoomError.textContent = 'Enter a room name.'; return; }
 
@@ -808,12 +871,13 @@ reqRoomBtn.addEventListener('click', async () => {
         roomName: name,
         purpose: purpose,
         visibility: visibility,
-        referralCode: referral || '(none requested)'
+        referralCode: referral || '(none requested)',
+        readOnly: readOnly ? 'Yes' : 'No'
       })
     });
     if (!res.ok) throw new Error('send failed');
     reqRoomSuccess.textContent = 'Sent! The admin will follow up.';
-    reqRoomName.value = ''; reqRoomPurpose.value = ''; reqRoomReferral.value = '';
+    reqRoomName.value = ''; reqRoomPurpose.value = ''; reqRoomReferral.value = ''; reqRoomReadonly.checked = false;
   } catch (e) {
     reqRoomError.textContent = "Couldn't send the request. Try again later.";
   }
@@ -829,6 +893,7 @@ createRoomBtn.addEventListener('click', async () => {
   const visibility = document.querySelector('input[name="new-visibility"]:checked').value;
   const adminEmail = newRoomAdminEmail.value.trim().toLowerCase();
   const referral = newRoomReferral.value.trim().toUpperCase();
+  const readOnly = newRoomReadonly.checked;
   createRoomError.textContent = '';
   if (!name || !adminEmail) { createRoomError.textContent = 'Enter a room name and the room admin\'s email.'; return; }
   createRoomBtn.disabled = true;
@@ -845,19 +910,19 @@ createRoomBtn.addEventListener('click', async () => {
     const roomId = db.ref('rooms').push().key;
     const updates = {
       ['rooms/' + roomId]: {
-        name, purpose, visibility, readOnly: false, roomAdmin: assignedUid, createdAt: Date.now(),
+        name, purpose, visibility, readOnly, roomAdmin: assignedUid, mainAdmin: assignedUid, admins: { [assignedUid]: true }, createdAt: Date.now(),
         members: { [assignedUid]: { joinedAt: Date.now() } }
       },
       ['userRooms/' + assignedUid + '/' + roomId]: true
     };
     if (visibility === 'global') {
-      updates['globalRoomsIndex/' + roomId] = { name, purpose, readOnly: false };
+      updates['globalRoomsIndex/' + roomId] = { name, purpose, readOnly };
     }
     if (referral) {
       updates['referralCodes/' + referral] = { roomId, used: false, createdBy: assignedUid, createdAt: Date.now() };
     }
     await db.ref().update(updates);
-    newRoomName.value = ''; newRoomPurpose.value = ''; newRoomAdminEmail.value = ''; newRoomReferral.value = '';
+    newRoomName.value = ''; newRoomPurpose.value = ''; newRoomAdminEmail.value = ''; newRoomReferral.value = ''; newRoomReadonly.checked = false;
     loadRoomScreen();
   } catch (e) {
     console.error('create room failed:', e);
@@ -876,98 +941,141 @@ async function openManage(roomId, room) {
   manageCodeBox.textContent = '';
   manageTopicInput.value = room.topic || room.purpose || '';
   manageTopicError.textContent = '';
+  manageReadonlyError.textContent = '';
+  manageReadonly.checked = !!room.readOnly;
 
+  const currentIsMain = isMainAdminFor(room, auth.currentUser.uid) || isAdmin;
+  const currentIsRoomAdmin = isRoomAdminFor(room, auth.currentUser.uid) || isAdmin;
+  manageReadonly.disabled = !currentIsMain;
+  saveReadonlyBtn.disabled = !currentIsMain;
+
+  // Pending requests (private rooms).
   const requests = room.joinRequests || {};
   const reqIds = Object.keys(requests);
   manageRequestsList.innerHTML = reqIds.length ? '' : '<div class="hint" style="margin:0;">No pending requests.</div>';
   for (const uid of reqIds) {
     const name = await displayNameFor(uid);
-    const row = document.createElement('div');
-    row.className = 'req-row';
-    row.innerHTML = '<span>' + escapeHtml(name) + '</span><span>' +
-      '<button class="btn small secondary" data-approve="' + uid + '">Approve</button> ' +
-      '<button class="link-btn" data-deny="' + uid + '">Deny</button></span>';
+    const row = document.createElement('div'); row.className = 'req-row';
+    row.innerHTML = '<span>' + escapeHtml(name) + '</span><span><button class="btn small secondary" data-approve="' + uid + '">Approve</button> <button class="link-btn" data-deny="' + uid + '">Deny</button></span>';
     manageRequestsList.appendChild(row);
   }
-  manageRequestsList.querySelectorAll('[data-approve]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const uid = btn.dataset.approve;
-      await db.ref().update({
-        ['rooms/' + roomId + '/members/' + uid]: { joinedAt: Date.now() },
-        ['userRooms/' + uid + '/' + roomId]: true,
-        ['rooms/' + roomId + '/joinRequests/' + uid]: null
-      });
-      const snap = await db.ref('rooms/' + roomId).once('value');
-      openManage(roomId, snap.val());
+  manageRequestsList.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.dataset.approve;
+    await db.ref().update({
+      ['rooms/' + roomId + '/members/' + uid]: { joinedAt: Date.now() },
+      ['userRooms/' + uid + '/' + roomId]: true,
+      ['rooms/' + roomId + '/joinRequests/' + uid]: null
     });
-  });
-  manageRequestsList.querySelectorAll('[data-deny]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await db.ref('rooms/' + roomId + '/joinRequests/' + btn.dataset.deny).remove();
-      const snap = await db.ref('rooms/' + roomId).once('value');
-      openManage(roomId, snap.val());
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
+  manageRequestsList.querySelectorAll('[data-deny]').forEach(btn => btn.addEventListener('click', async () => {
+    await db.ref('rooms/' + roomId + '/joinRequests/' + btn.dataset.deny).remove();
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
+
+  // Admins. Only the Main Admin can promote/demote/transfer adminship.
+  const admins = roomAdmins(room);
+  manageAdminsList.innerHTML = '';
+  for (const uid of Object.keys(admins)) {
+    const name = await displayNameFor(uid);
+    const isMain = isMainAdminFor(room, uid);
+    const canTransfer = currentIsMain && !isMain;
+    const canRemove = currentIsMain && !isMain;
+    const row = document.createElement('div'); row.className = 'mem-row';
+    let actions = '';
+    if (canTransfer) actions += '<button class="link-btn" data-main="' + uid + '">Make main</button> ';
+    if (canRemove) actions += '<button class="link-btn" data-demote="' + uid + '">Remove admin</button>';
+    row.innerHTML = '<span>' + escapeHtml(name) + (isMain ? ' (Main Admin)' : ' (Admin)') + '</span><span>' + actions + '</span>';
+    manageAdminsList.appendChild(row);
+  }
+  manageAdminsList.querySelectorAll('[data-main]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!currentIsMain) return;
+    const newMain = btn.dataset.main;
+    await db.ref().update({
+      ['rooms/' + roomId + '/mainAdmin']: newMain,
+      ['rooms/' + roomId + '/admins/' + newMain]: true,
+      ['rooms/' + roomId + '/roomAdmin']: newMain
     });
-  });
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
+  manageAdminsList.querySelectorAll('[data-demote]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!currentIsMain) return;
+    const target = btn.dataset.demote;
+    await db.ref('rooms/' + roomId + '/admins/' + target).remove();
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
 
   const members = room.members || {};
   const memberIds = Object.keys(members);
   manageMembersList.innerHTML = '';
   for (const uid of memberIds) {
     const name = await displayNameFor(uid);
-    const row = document.createElement('div');
-    row.className = 'mem-row';
-    row.innerHTML = '<span>' + escapeHtml(name) + (uid === room.roomAdmin ? ' (admin)' : '') + '</span>' +
-      (uid === room.roomAdmin ? '' : '<span><button class="link-btn" data-remove="' + uid + '">Remove</button> <button class="link-btn" data-ban="' + uid + '">Ban</button></span>');
+    const admin = !!admins[uid];
+    const row = document.createElement('div'); row.className = 'mem-row';
+    let actions = '';
+    if (!admin && currentIsMain) actions += '<button class="link-btn" data-promote="' + uid + '">Make admin</button> ';
+    if (!admin && uid !== auth.currentUser.uid) actions += '<button class="link-btn" data-remove="' + uid + '">Remove</button> <button class="link-btn" data-ban="' + uid + '">Ban</button>';
+    row.innerHTML = '<span>' + escapeHtml(name) + (admin ? ' (Admin)' : '') + '</span><span>' + actions + '</span>';
     manageMembersList.appendChild(row);
   }
-  manageMembersList.querySelectorAll('[data-remove]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const uid = btn.dataset.remove;
-      await db.ref().update({
-        ['rooms/' + roomId + '/members/' + uid]: null,
-        ['userRooms/' + uid + '/' + roomId]: null
-      });
-      const snap = await db.ref('rooms/' + roomId).once('value');
-      openManage(roomId, snap.val());
+  manageMembersList.querySelectorAll('[data-promote]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!currentIsMain) return;
+    const uid = btn.dataset.promote;
+    await db.ref('rooms/' + roomId + '/admins/' + uid).set(true);
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
+  manageMembersList.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.dataset.remove;
+    await db.ref().update({ ['rooms/' + roomId + '/members/' + uid]: null, ['userRooms/' + uid + '/' + roomId]: null });
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
+  manageMembersList.querySelectorAll('[data-ban]').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.dataset.ban;
+    await db.ref().update({
+      ['rooms/' + roomId + '/banned/' + uid]: { bannedAt: Date.now(), bannedBy: auth.currentUser.uid },
+      ['rooms/' + roomId + '/members/' + uid]: null,
+      ['userRooms/' + uid + '/' + roomId]: null,
+      ['rooms/' + roomId + '/joinRequests/' + uid]: null
     });
-  });
-
-  manageMembersList.querySelectorAll('[data-ban]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const uid = btn.dataset.ban;
-      await db.ref().update({
-        ['rooms/' + roomId + '/banned/' + uid]: { bannedAt: Date.now(), bannedBy: auth.currentUser.uid },
-        ['rooms/' + roomId + '/members/' + uid]: null,
-        ['userRooms/' + uid + '/' + roomId]: null,
-        ['rooms/' + roomId + '/joinRequests/' + uid]: null
-      });
-      const snap = await db.ref('rooms/' + roomId).once('value');
-      openManage(roomId, snap.val());
-    });
-  });
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
 
   const banned = room.banned || {};
   const bannedIds = Object.keys(banned);
   manageBannedList.innerHTML = bannedIds.length ? '' : '<div class="hint" style="margin:0;">No banned members.</div>';
   for (const uid of bannedIds) {
     const name = await displayNameFor(uid);
-    const row = document.createElement('div');
-    row.className = 'mem-row';
+    const row = document.createElement('div'); row.className = 'mem-row';
     row.innerHTML = '<span>' + escapeHtml(name) + '</span><button class="link-btn" data-unban="' + uid + '">Unban</button>';
     manageBannedList.appendChild(row);
   }
-  manageBannedList.querySelectorAll('[data-unban]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await db.ref('rooms/' + roomId + '/banned/' + btn.dataset.unban).remove();
-      const snap = await db.ref('rooms/' + roomId).once('value');
-      openManage(roomId, snap.val());
-    });
-  });
+  manageBannedList.querySelectorAll('[data-unban]').forEach(btn => btn.addEventListener('click', async () => {
+    await db.ref('rooms/' + roomId + '/banned/' + btn.dataset.unban).remove();
+    const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
+  }));
 
   manageDialog.showModal();
 }
 manageCloseBtn.addEventListener('click', () => manageDialog.close());
 manageDialog.addEventListener('click', e => { if (e.target === manageDialog) manageDialog.close(); });
+saveReadonlyBtn.addEventListener('click', async () => {
+  if (!manageRoomId) return;
+  manageReadonlyError.textContent = '';
+  saveReadonlyBtn.disabled = true;
+  try {
+    const value = manageReadonly.checked;
+    await db.ref().update({
+      ['rooms/' + manageRoomId + '/readOnly']: value,
+      ['globalRoomsIndex/' + manageRoomId + '/readOnly']: value
+    });
+    if (currentRoomData && currentRoomData.roomId === manageRoomId) {
+      currentRoomData.readOnly = value;
+      updateComposerForRoom();
+    }
+  } catch (e) { manageReadonlyError.textContent = 'Couldn\'t save the room setting.'; }
+  saveReadonlyBtn.disabled = false;
+});
+
 saveTopicBtn.addEventListener('click', async () => {
   if (!manageRoomId) return;
   manageTopicError.textContent = '';
@@ -1111,7 +1219,8 @@ async function enterRoom(roomId, roomName) {
   const roomSnap = await db.ref('rooms/' + roomId).once('value');
   currentRoomData = roomSnap.val() || {};
   currentRoomData.roomId = roomId;
-  currentRoomAdmin = currentRoomData.roomAdmin || null;
+  currentRoomAdmin = currentRoomData.roomAdmin || currentRoomData.mainAdmin || null;
+  currentMainAdmin = currentRoomData.mainAdmin || currentRoomData.roomAdmin || null;
   if (currentRoomData.banned && currentRoomData.banned[memberId]) {
     alert('You are banned from this room.');
     return;
@@ -1128,7 +1237,12 @@ async function enterRoom(roomId, roomName) {
   roomTitle.textContent = roomName;
   roomTopicEl.textContent = currentRoomData.topic || currentRoomData.purpose || '';
   roomTopicEl.style.display = roomTopicEl.textContent ? 'block' : 'none';
+  updateComposerForRoom();
   msgInput.focus();
+
+  if (pinnedRef) pinnedRef.off();
+  pinnedRef = db.ref('rooms/' + roomId + '/pinnedMessages');
+  pinnedRef.on('value', snap => renderPinnedMessages(snap.val() || {}));
 
   appendMessage._lastDay = null;
   appendMessage._lastSender = null;
@@ -1176,12 +1290,58 @@ function renderTyping(typing) {
 }
 
 function setTyping() {
-  if (!typingRef) return;
+  if (!typingRef || !(!currentRoomData || !currentRoomData.readOnly || isCurrentRoomAdmin())) return;
   typingRef.set(Date.now());
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => typingRef && typingRef.remove(), 1600);
 }
 
+
+function updateComposerForRoom() {
+  const readOnly = !!(currentRoomData && currentRoomData.readOnly);
+  const canPost = !readOnly || isCurrentRoomAdmin();
+  msgInput.disabled = !canPost;
+  attachImageBtn.disabled = !canPost;
+  sendBtn.disabled = !canPost || (!msgInput.value.trim() && !pendingImageData);
+  msgInput.placeholder = canPost ? 'Say something…' : 'This room is read-only.';
+  if (typingRef && !canPost) typingRef.remove();
+}
+
+function renderPinnedMessages(pins) {
+  const now = Date.now();
+  const active = Object.entries(pins).filter(([_, p]) => p && (!p.expiresAt || p.expiresAt > now)).sort((a,b) => (a[1].pinnedAt||0) - (b[1].pinnedAt||0));
+  pinnedMessagesEl.innerHTML = '';
+  if (!active.length) { pinnedMessagesEl.style.display = 'none'; return; }
+  pinnedMessagesEl.style.display = 'block';
+  active.forEach(([key, p]) => {
+    const item = document.createElement('div'); item.className = 'pin-item';
+    const text = document.createElement('div'); text.className = 'pin-text';
+    text.textContent = p.text || (p.hasImage ? '📷 Image message' : 'Pinned message');
+    const meta = document.createElement('div'); meta.className = 'pin-meta';
+    meta.textContent = p.expiresAt ? 'until ' + new Date(p.expiresAt).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : 'permanent';
+    item.appendChild(document.createTextNode('📌')); item.appendChild(text); item.appendChild(meta);
+    if (isCurrentMainAdmin()) {
+      const unpin = document.createElement('button'); unpin.className='pin-btn'; unpin.textContent='Unpin'; unpin.addEventListener('click',()=>unpinMessage(key)); item.appendChild(unpin);
+    }
+    item.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') { const row=document.querySelector('[data-msg-id="'+key+'"]'); if(row) row.scrollIntoView({behavior:'smooth',block:'center'}); } });
+    pinnedMessagesEl.appendChild(item);
+  });
+}
+
+async function pinMessage(key, m) {
+  if (!isCurrentMainAdmin() || !currentRoomId || !m) return;
+  const choice = prompt('Pin duration: 1h, 1d, 7d, 1mo, 1y, or permanent', '1d');
+  if (!choice || !['1h','1d','7d','1mo','1y','permanent'].includes(choice.trim())) return;
+  const duration = pinDurationMs(choice.trim());
+  const expiresAt = duration ? Date.now() + duration : null;
+  await db.ref('rooms/' + currentRoomId + '/pinnedMessages/' + key).set({
+    pinnedAt: Date.now(), pinnedBy: memberId, expiresAt, text: m.text || '', hasImage: !!m.image
+  });
+}
+async function unpinMessage(key) {
+  if (!isCurrentMainAdmin() || !currentRoomId) return;
+  await db.ref('rooms/' + currentRoomId + '/pinnedMessages/' + key).remove();
+}
 
 function appendMessage(key, m) {
   if (!m) return;
@@ -1241,8 +1401,11 @@ function renderMessageContents(row, key, m) {
   if (!m.deleted) {
     const tools = document.createElement('div'); tools.className = 'message-tools';
     REACTIONS.forEach(emoji => { const b=document.createElement('button'); b.className='reaction'; b.textContent=emoji; b.dataset.react=emoji; b.addEventListener('click',()=>toggleReaction(key,emoji)); tools.appendChild(b); });
-    if (m.uid === memberId || isAdmin || currentRoomAdmin === memberId) {
+    if (m.uid === memberId || isAdmin || isCurrentRoomAdmin()) {
       const d=document.createElement('button'); d.className='message-action'; d.textContent='Delete'; d.addEventListener('click',()=>deleteMessage(key)); tools.appendChild(d);
+    }
+    if (isCurrentMainAdmin()) {
+      const p=document.createElement('button'); p.className='message-action'; p.textContent='Pin'; p.addEventListener('click',()=>pinMessage(key,m)); tools.appendChild(p);
     }
     row.appendChild(tools);
   }
@@ -1326,6 +1489,7 @@ imageInput.addEventListener('change', async () => {
 async function send() {
   const text = msgInput.value.trim();
   if ((!text && !pendingImageData) || !currentRoomId) return;
+  if (currentRoomData && currentRoomData.readOnly && !isCurrentRoomAdmin()) return;
   const now=Date.now();
   if (now-lastMessageSentAt < MESSAGE_COOLDOWN_MS) return;
   if (!roomMembers[memberId]) return;
