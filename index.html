@@ -6,6 +6,8 @@
 <title>The Porch</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<meta name="theme-color" content="#171B2E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%23171B2E%22/%3E%3Cpath d=%22M10 32 32 13l22 19v19H10z%22 fill=%22%23E8A33D%22/%3E%3Cpath d=%22M25 51V34h14v17%22 fill=%22%23171B2E%22/%3E%3Ccircle cx=%2248%22 cy=%2214%22 r=%226%22 fill=%22%23F3EFE4%22/%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -134,6 +136,19 @@
   #composer button { background:var(--accent); color:var(--accent-text); border:none; border-radius:12px;
     width:42px; height:42px; flex-shrink:0; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
   #composer button:disabled { opacity:0.4; cursor:default; }
+  #composer .attach-btn { background:transparent; color:var(--text); border:1px solid var(--border); }
+  .room-topic { width:100%; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); color:var(--text-muted); font-size:12.5px; text-align:left; }
+  .typing-indicator { min-height:18px; padding:0 18px 4px; color:var(--text-muted); font-size:11.5px; }
+  .message-tools { display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; }
+  .message-action { border:none; background:transparent; color:var(--text-muted); cursor:pointer; font:inherit; font-size:11px; padding:2px 4px; }
+  .reaction { border:1px solid var(--border); background:var(--surface-2); color:var(--text); border-radius:12px; padding:2px 6px; font-size:11px; cursor:pointer; }
+  .reaction.mine { border-color:var(--accent); }
+  .image-preview { max-width:240px; max-height:260px; border-radius:12px; margin-top:3px; display:block; }
+  .image-preview-link { display:block; }
+  .message-deleted { color:var(--text-muted); font-style:italic; }
+  .manage-note { color:var(--text-muted); font-size:11.5px; line-height:1.4; }
+  #forgot-password-btn { margin-top:-4px; }
+  #notification-btn { margin-top:2px; }
 </style>
 </head>
 <body>
@@ -203,6 +218,7 @@
       <input id="auth-email" class="field" type="email" placeholder="Email" autocomplete="off">
       <input id="auth-password" class="field" type="password" placeholder="Password" autocomplete="off">
       <button id="auth-submit" class="btn">Sign in</button>
+      <button id="forgot-password-btn" class="link-btn">Forgot password?</button>
       <button id="auth-toggle" class="link-btn">Need an account? Create one</button>
     </div>
     <div class="error" id="auth-error"></div>
@@ -285,6 +301,17 @@
         <h4>Members</h4>
         <div id="manage-members-list"></div>
       </div>
+      <div class="dialog-section">
+        <h4>Banned</h4>
+        <div id="manage-banned-list"></div>
+      </div>
+      <div class="dialog-section">
+        <h4>Room topic</h4>
+        <textarea id="manage-topic-input" class="field" style="max-width:none;" maxlength="200" placeholder="Shown at the top of chat"></textarea>
+        <button id="save-topic-btn" class="btn small secondary" style="margin-top:7px;">Save topic</button>
+        <div id="manage-topic-error" class="error"></div>
+      </div>
+      <div class="manage-note">Admins can remove members, ban members, delete any message, and change the room topic.</div>
     </div>
   </dialog>
 
@@ -333,6 +360,7 @@
         <button id="leave-room-btn" class="link-btn">Leave room</button>
       </div>
     </header>
+    <div id="room-topic" class="room-topic" style="display:none;"></div>
     <dialog id="live-users-dialog" class="sheet">
       <div class="dialog-head">
         <span>Live now</span>
@@ -346,7 +374,10 @@
         Be the first to say something.
       </div>
     </div>
+    <div id="typing-indicator" class="typing-indicator"></div>
     <div id="composer">
+      <input id="image-input" type="file" accept="image/*" style="display:none;">
+      <button id="attach-image-btn" class="attach-btn" title="Send image" aria-label="Send image">＋</button>
       <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
       <button id="send-btn" disabled>↑</button>
     </div>
@@ -355,6 +386,10 @@
 </div>
 
 <script>
+/* ======================================================================
+   STANDALONE BUILD: all app HTML/CSS/JS lives in this one file.
+   Background web push/PWA service-worker files are intentionally not used.
+   ====================================================================== */
 /* ======================================================================
    PASTE YOUR OWN FIREBASE CONFIG HERE (Project settings -> General ->
    Your apps -> Web app -> Config). Enable Authentication (Email/Password)
@@ -381,6 +416,9 @@ const SITE_ADMIN_EMAIL = "eb3736d8fb0ba1522ec324c6dab9bf01";
 /* ====================================================================== */
 
 const MAX_MESSAGES = 400;
+const MESSAGE_COOLDOWN_MS = 1000;
+const IMAGE_MAX_BYTES = 240000;
+const REACTIONS = ['👍','❤️','😂','😮','🎉'];
 const NAME_COLORS = ['#7FB4CA','#C98BDB','#8FD19E','#E88BA0','#F2C879','#9FA8E8','#8FC4B0','#D9A6E0'];
 
 firebase.initializeApp(firebaseConfig);
@@ -444,6 +482,7 @@ const authPassword = document.getElementById('auth-password');
 const authSubmit = document.getElementById('auth-submit');
 const authToggle = document.getElementById('auth-toggle');
 const authError = document.getElementById('auth-error');
+const forgotPasswordBtn = document.getElementById('forgot-password-btn');
 
 const roomScreen = document.getElementById('room-screen');
 const adminBadge = document.getElementById('admin-badge');
@@ -476,6 +515,10 @@ const manageRequestsList = document.getElementById('manage-requests-list');
 const manageMembersList = document.getElementById('manage-members-list');
 const genCodeBtn = document.getElementById('gen-code-btn');
 const manageCodeBox = document.getElementById('manage-code-box');
+const manageBannedList = document.getElementById('manage-banned-list');
+const manageTopicInput = document.getElementById('manage-topic-input');
+const saveTopicBtn = document.getElementById('save-topic-btn');
+const manageTopicError = document.getElementById('manage-topic-error');
 
 const profileBtn = document.getElementById('profile-btn');
 const profileScreen = document.getElementById('profile-screen');
@@ -506,6 +549,10 @@ const liveCount = document.getElementById('live-count');
 const liveUsersDialog = document.getElementById('live-users-dialog');
 const liveUsersList = document.getElementById('live-users-list');
 const closeLiveDialog = document.getElementById('close-live-dialog');
+const roomTopicEl = document.getElementById('room-topic');
+const typingIndicator = document.getElementById('typing-indicator');
+const imageInput = document.getElementById('image-input');
+const attachImageBtn = document.getElementById('attach-image-btn');
 
 // ---------- state ----------
 let isSignupMode = false;
@@ -517,6 +564,12 @@ let roomMembers = {};  // uid -> {joinedAt}
 let liveUids = {};
 let memberId = null, memberCount = 0;
 let manageRoomId = null;
+let currentRoomData = null;
+let typingRef = null, typingListRef = null, typingTimer = null;
+let lastMessageSentAt = 0;
+let pendingImageData = null;
+let messageReactionRefs = {};
+let notificationPermissionRequested = false;
 
 // =======================================================================
 // AUTH
@@ -529,6 +582,22 @@ authToggle.addEventListener('click', () => {
   authHint.textContent = isSignupMode ? 'Create your account with a name, email and password.' : 'Sign in to your account.';
   authToggle.textContent = isSignupMode ? 'Already have an account? Sign in' : "Need an account? Create one";
   authError.textContent = '';
+});
+
+forgotPasswordBtn.addEventListener('click', async () => {
+  const email = authEmail.value.trim();
+  authError.textContent = '';
+  if (!email) { authError.textContent = 'Enter your email first.'; return; }
+  forgotPasswordBtn.disabled = true;
+  try {
+    await auth.sendPasswordResetEmail(email);
+    authError.style.color = '#6FCF97';
+    authError.textContent = 'Password reset email sent. Check your inbox.';
+  } catch (e) {
+    authError.style.color = '';
+    authError.textContent = e.code === 'auth/user-not-found' ? 'No account found for that email.' : "Couldn't send the reset email. Try again.";
+  }
+  forgotPasswordBtn.disabled = false;
 });
 
 authSubmit.addEventListener('click', async () => {
@@ -562,11 +631,17 @@ function cleanupRoom() {
   if (membersRef) membersRef.off();
   if (presenceListRef) presenceListRef.off();
   if (connectedRef) connectedRef.off();
+  if (typingListRef) typingListRef.off();
+  if (typingRef) { typingRef.onDisconnect().remove(); typingRef.remove(); }
+  Object.values(messageReactionRefs).forEach(ref => ref.off());
+  messageReactionRefs = {};
   if (presenceRef) { presenceRef.onDisconnect().cancel(); presenceRef.remove(); }
   presenceRef = null; presenceListRef = null; connectedRef = null;
   roomMembers = {}; liveUids = {};
   if (liveUsersDialog.open) liveUsersDialog.close();
-  currentRoomId = null; currentRoomAdmin = null;
+  currentRoomId = null; currentRoomAdmin = null; currentRoomData = null;
+  typingRef = null; typingListRef = null; pendingImageData = null;
+  typingIndicator.textContent = ''; roomTopicEl.style.display = 'none';
 }
 
 signoutBtn.addEventListener('click', () => { cleanupRoom(); auth.signOut(); });
@@ -639,6 +714,7 @@ async function loadRoomScreen() {
   });
 
   // ---- global rooms you're not in yet ----
+  // Global rooms are open: signed-in users can enter without a referral/request.
   const globalSnap = await db.ref('globalRoomsIndex').once('value');
   const globalIndex = globalSnap.val() || {};
   const notJoinedIds = Object.keys(globalIndex).filter(id => !myRoomIds.includes(id));
@@ -647,26 +723,35 @@ async function loadRoomScreen() {
 
   for (const roomId of notJoinedIds) {
     const info = globalIndex[roomId];
-    const reqSnap = await db.ref('rooms/' + roomId + '/joinRequests/' + uid).once('value');
-    const pending = reqSnap.exists();
-
     const row = document.createElement('div');
     row.className = 'room-row';
     row.innerHTML =
       '<div><div class="rname">' + escapeHtml(info.name) + '</div>' +
       (info.purpose ? '<div class="rmeta">' + escapeHtml(info.purpose) + '</div>' : '') + '</div>' +
       '<div class="ractions">' +
-      (pending
-        ? '<span class="badge muted">Requested</span>'
-        : '<button class="btn small secondary" data-request="' + roomId + '">Request to join</button>') +
+      '<button class="btn small secondary" data-global-enter="' + roomId + '">Enter</button>' +
       '</div>';
     globalRoomsList.appendChild(row);
   }
-  globalRoomsList.querySelectorAll('[data-request]').forEach(btn => {
+  globalRoomsList.querySelectorAll('[data-global-enter]').forEach(btn => {
     btn.addEventListener('click', async () => {
       btn.disabled = true;
-      await db.ref('rooms/' + btn.dataset.request + '/joinRequests/' + uid).set({ requestedAt: Date.now() });
-      loadRoomScreen();
+      try {
+        const roomId = btn.dataset.globalEnter;
+        const roomSnap = await db.ref('rooms/' + roomId).once('value');
+        const room = roomSnap.val();
+        if (!room || room.visibility !== 'global') throw new Error('This global room is no longer available.');
+        if (room.banned && room.banned[uid]) throw new Error('You are banned from this room.');
+        // Add the user as a member when they enter, so presence/member features work normally.
+        await db.ref().update({
+          ['rooms/' + roomId + '/members/' + uid]: { joinedAt: Date.now() },
+          ['userRooms/' + uid + '/' + roomId]: true
+        });
+        await enterRoom(roomId, room.name);
+      } catch (e) {
+        alert(e.message || "Couldn't enter that room.");
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -760,13 +845,13 @@ createRoomBtn.addEventListener('click', async () => {
     const roomId = db.ref('rooms').push().key;
     const updates = {
       ['rooms/' + roomId]: {
-        name, purpose, visibility, roomAdmin: assignedUid, createdAt: Date.now(),
+        name, purpose, visibility, readOnly: false, roomAdmin: assignedUid, createdAt: Date.now(),
         members: { [assignedUid]: { joinedAt: Date.now() } }
       },
       ['userRooms/' + assignedUid + '/' + roomId]: true
     };
     if (visibility === 'global') {
-      updates['globalRoomsIndex/' + roomId] = { name, purpose };
+      updates['globalRoomsIndex/' + roomId] = { name, purpose, readOnly: false };
     }
     if (referral) {
       updates['referralCodes/' + referral] = { roomId, used: false, createdBy: assignedUid, createdAt: Date.now() };
@@ -789,6 +874,8 @@ async function openManage(roomId, room) {
   manageRoomTitle.textContent = room.name;
   manageCodeBox.style.display = 'none';
   manageCodeBox.textContent = '';
+  manageTopicInput.value = room.topic || room.purpose || '';
+  manageTopicError.textContent = '';
 
   const requests = room.joinRequests || {};
   const reqIds = Object.keys(requests);
@@ -830,7 +917,7 @@ async function openManage(roomId, room) {
     const row = document.createElement('div');
     row.className = 'mem-row';
     row.innerHTML = '<span>' + escapeHtml(name) + (uid === room.roomAdmin ? ' (admin)' : '') + '</span>' +
-      (uid === room.roomAdmin ? '' : '<button class="link-btn" data-remove="' + uid + '">Remove</button>');
+      (uid === room.roomAdmin ? '' : '<span><button class="link-btn" data-remove="' + uid + '">Remove</button> <button class="link-btn" data-ban="' + uid + '">Ban</button></span>');
     manageMembersList.appendChild(row);
   }
   manageMembersList.querySelectorAll('[data-remove]').forEach(btn => {
@@ -845,10 +932,52 @@ async function openManage(roomId, room) {
     });
   });
 
+  manageMembersList.querySelectorAll('[data-ban]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.ban;
+      await db.ref().update({
+        ['rooms/' + roomId + '/banned/' + uid]: { bannedAt: Date.now(), bannedBy: auth.currentUser.uid },
+        ['rooms/' + roomId + '/members/' + uid]: null,
+        ['userRooms/' + uid + '/' + roomId]: null,
+        ['rooms/' + roomId + '/joinRequests/' + uid]: null
+      });
+      const snap = await db.ref('rooms/' + roomId).once('value');
+      openManage(roomId, snap.val());
+    });
+  });
+
+  const banned = room.banned || {};
+  const bannedIds = Object.keys(banned);
+  manageBannedList.innerHTML = bannedIds.length ? '' : '<div class="hint" style="margin:0;">No banned members.</div>';
+  for (const uid of bannedIds) {
+    const name = await displayNameFor(uid);
+    const row = document.createElement('div');
+    row.className = 'mem-row';
+    row.innerHTML = '<span>' + escapeHtml(name) + '</span><button class="link-btn" data-unban="' + uid + '">Unban</button>';
+    manageBannedList.appendChild(row);
+  }
+  manageBannedList.querySelectorAll('[data-unban]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await db.ref('rooms/' + roomId + '/banned/' + btn.dataset.unban).remove();
+      const snap = await db.ref('rooms/' + roomId).once('value');
+      openManage(roomId, snap.val());
+    });
+  });
+
   manageDialog.showModal();
 }
 manageCloseBtn.addEventListener('click', () => manageDialog.close());
 manageDialog.addEventListener('click', e => { if (e.target === manageDialog) manageDialog.close(); });
+saveTopicBtn.addEventListener('click', async () => {
+  if (!manageRoomId) return;
+  manageTopicError.textContent = '';
+  saveTopicBtn.disabled = true;
+  try {
+    await db.ref('rooms/' + manageRoomId + '/topic').set(manageTopicInput.value.trim());
+    currentRoomData = currentRoomData && currentRoomData.roomId === manageRoomId ? currentRoomData : currentRoomData;
+  } catch (e) { manageTopicError.textContent = 'Couldn\'t save the topic.'; }
+  saveTopicBtn.disabled = false;
+});
 
 genCodeBtn.addEventListener('click', async () => {
   if (!manageRoomId) return;
@@ -979,16 +1108,36 @@ async function enterRoom(roomId, roomName) {
   membersRef = db.ref('rooms/' + roomId + '/members');
   messagesRef = db.ref('rooms/' + roomId + '/messages');
 
+  const roomSnap = await db.ref('rooms/' + roomId).once('value');
+  currentRoomData = roomSnap.val() || {};
+  currentRoomData.roomId = roomId;
+  currentRoomAdmin = currentRoomData.roomAdmin || null;
+  if (currentRoomData.banned && currentRoomData.banned[memberId]) {
+    alert('You are banned from this room.');
+    return;
+  }
+  if (currentRoomData.visibility === 'global' && !currentRoomData.members?.[memberId]) {
+    await db.ref().update({
+      ['rooms/' + roomId + '/members/' + memberId]: { joinedAt: Date.now() },
+      ['userRooms/' + memberId + '/' + roomId]: true
+    });
+  }
+
   roomScreen.style.display = 'none';
   chatView.style.display = 'flex';
   roomTitle.textContent = roomName;
+  roomTopicEl.textContent = currentRoomData.topic || currentRoomData.purpose || '';
+  roomTopicEl.style.display = roomTopicEl.textContent ? 'block' : 'none';
   msgInput.focus();
 
   appendMessage._lastDay = null;
   appendMessage._lastSender = null;
   messagesEl.querySelectorAll('.row, .day-divider').forEach(n => n.remove());
+  typingIndicator.textContent = '';
 
-  messagesRef.limitToLast(MAX_MESSAGES).on('child_added', s => appendMessage(s.val()));
+  messagesRef.limitToLast(MAX_MESSAGES).on('child_added', s => appendMessage(s.key, s.val()));
+  messagesRef.on('child_changed', s => updateRenderedMessage(s.key, s.val()));
+  messagesRef.on('child_removed', s => updateRenderedMessage(s.key, s.val(), true));
   membersRef.on('value', s => {
     const v = s.val() || {};
     roomMembers = v;
@@ -1010,9 +1159,34 @@ async function enterRoom(roomId, roomName) {
     liveUids = snap.val() || {};
     renderLiveUsers();
   });
+
+  typingRef = db.ref('rooms/' + roomId + '/typing/' + memberId);
+  typingListRef = db.ref('rooms/' + roomId + '/typing');
+  typingRef.onDisconnect().remove();
+  typingListRef.on('value', snap => renderTyping(snap.val() || {}));
+
 }
 
-function appendMessage(m) {
+function renderTyping(typing) {
+  const ids = Object.keys(typing).filter(id => id !== memberId && roomMembers[id]);
+  if (!ids.length) { typingIndicator.textContent = ''; return; }
+  Promise.all(ids.slice(0,3).map(displayNameFor)).then(names => {
+    typingIndicator.textContent = names.length === 1 ? names[0] + ' is typing…' : names.join(', ') + ' are typing…';
+  });
+}
+
+function setTyping() {
+  if (!typingRef) return;
+  typingRef.set(Date.now());
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => typingRef && typingRef.remove(), 1600);
+}
+
+
+function appendMessage(key, m) {
+  if (!m) return;
+  const old = document.querySelector('[data-msg-id="' + key + '"]');
+  if (old) { updateRenderedMessage(key, m); return; }
   const day = new Date(m.ts).toDateString();
   if (appendMessage._lastDay !== day) {
     const div = document.createElement('div');
@@ -1026,61 +1200,150 @@ function appendMessage(m) {
   const mine = m.uid === memberId;
   const row = document.createElement('div');
   row.className = 'row ' + (mine ? 'me' : 'them');
+  row.dataset.msgId = key;
+  row.dataset.sender = m.uid || '';
   if (!mine && m.uid !== appendMessage._lastSender) {
     const sender = document.createElement('div');
     sender.className = 'sender';
     sender.style.color = m.color || colorFor(m.uid);
-    sender.innerHTML = avatarHtml(m.uid, m.name, profileCache[m.uid]?.avatar) + '<span>' + escapeHtml(m.name) + '</span>';
+    sender.innerHTML = avatarHtml(m.uid, m.name, profileCache[m.uid]?.avatar) + '<span>' + escapeHtml(m.name || 'Someone') + '</span>';
     row.appendChild(sender);
-    if (!profileCache[m.uid]) {
-      getUserProfile(m.uid).then(profile => {
-        if (profile.avatar) sender.innerHTML = avatarHtml(m.uid, m.name, profile.avatar) + '<span>' + escapeHtml(m.name) + '</span>';
-      });
-    }
+    if (!profileCache[m.uid]) getUserProfile(m.uid).then(profile => { if (profile.avatar) sender.innerHTML = avatarHtml(m.uid, m.name, profile.avatar) + '<span>' + escapeHtml(m.name || 'Someone') + '</span>'; });
   }
+  renderMessageContents(row, key, m);
+  messagesEl.appendChild(row);
+  appendMessage._lastSender = m.uid;
+  listenReactions(key);
+  const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 160;
+  if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderMessageContents(row, key, m) {
+  row.querySelectorAll('.bubble,.meta,.message-tools,.reaction-row').forEach(n => n.remove());
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = m.text;
+  if (m.deleted) {
+    const deleted = document.createElement('span');
+    deleted.className = 'message-deleted';
+    deleted.textContent = 'Message deleted';
+    bubble.appendChild(deleted);
+  } else {
+    if (m.text) { const text = document.createElement('div'); text.textContent = m.text; bubble.appendChild(text); }
+    if (m.image) {
+      const img = document.createElement('img'); img.className = 'image-preview'; img.src = m.image; img.alt = 'Shared image'; img.loading = 'lazy'; bubble.appendChild(img);
+    }
+  }
   row.appendChild(bubble);
   const meta = document.createElement('div');
   meta.className = 'meta';
   meta.textContent = new Date(m.ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   row.appendChild(meta);
-  messagesEl.appendChild(row);
-  appendMessage._lastSender = m.uid;
-
-  const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 160;
-  if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  if (!m.deleted) {
+    const tools = document.createElement('div'); tools.className = 'message-tools';
+    REACTIONS.forEach(emoji => { const b=document.createElement('button'); b.className='reaction'; b.textContent=emoji; b.dataset.react=emoji; b.addEventListener('click',()=>toggleReaction(key,emoji)); tools.appendChild(b); });
+    if (m.uid === memberId || isAdmin || currentRoomAdmin === memberId) {
+      const d=document.createElement('button'); d.className='message-action'; d.textContent='Delete'; d.addEventListener('click',()=>deleteMessage(key)); tools.appendChild(d);
+    }
+    row.appendChild(tools);
+  }
 }
+
+function updateRenderedMessage(key, m, removed) {
+  const row = document.querySelector('[data-msg-id="' + key + '"]');
+  if (!row) return;
+  if (removed) { row.remove(); return; }
+  renderMessageContents(row, key, m);
+  listenReactions(key);
+}
+
+function listenReactions(key) {
+  if (!currentRoomId || messageReactionRefs[key]) return;
+  const ref = db.ref('rooms/' + currentRoomId + '/messages/' + key + '/reactions');
+  messageReactionRefs[key] = ref;
+  ref.on('value', snap => {
+    const row = document.querySelector('[data-msg-id="' + key + '"]'); if (!row) return;
+    const old = row.querySelector('.reaction-row'); if (old) old.remove();
+    const counts = snap.val() || {};
+    const wrap = document.createElement('div'); wrap.className='reaction-row message-tools';
+    Object.keys(counts).filter(e => REACTIONS.includes(e)).forEach(e => {
+      const users = counts[e] || {}; const btn=document.createElement('button'); btn.className='reaction' + (users[memberId] ? ' mine' : ''); btn.textContent=e+' '+Object.keys(users).length; btn.addEventListener('click',()=>toggleReaction(key,e)); wrap.appendChild(btn);
+    });
+    if (wrap.children.length) row.appendChild(wrap);
+  });
+}
+
+async function toggleReaction(key, emoji) {
+  if (!currentRoomId || !roomMembers[memberId]) return;
+  const ref = db.ref('rooms/' + currentRoomId + '/messages/' + key + '/reactions/' + emoji + '/' + memberId);
+  const snap = await ref.once('value');
+  if (snap.exists()) await ref.remove(); else await ref.set(true);
+}
+
+async function deleteMessage(key) {
+  if (!currentRoomId) return;
+  try { await db.ref('rooms/' + currentRoomId + '/messages/' + key).update({ deleted:true, deletedAt:Date.now(), deletedBy:memberId }); }
+  catch (e) { console.error(e); }
+}
+
+async function compressImage(file) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Please choose an image.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve,reject)=>{ const i=new Image(); i.onload=()=>resolve(i); i.onerror=reject; i.src=url; });
+    const maxSide=1280, scale=Math.min(1,maxSide/Math.max(img.width,img.height));
+    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(img.width*scale)); c.height=Math.max(1,Math.round(img.height*scale));
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    let quality=.72, data=c.toDataURL('image/jpeg',quality);
+    while (data.length*0.75 > IMAGE_MAX_BYTES && quality>.35) { quality-=.07; data=c.toDataURL('image/jpeg',quality); }
+    if (data.length*0.75 > IMAGE_MAX_BYTES) throw new Error('Image is too large after compression.');
+    return data;
+  } finally { URL.revokeObjectURL(url); }
+}
+
 
 function autoGrow() {
   msgInput.style.height = 'auto';
   msgInput.style.height = Math.min(msgInput.scrollHeight, 110) + 'px';
 }
 msgInput.addEventListener('input', () => {
-  sendBtn.disabled = !msgInput.value.trim();
+  sendBtn.disabled = !msgInput.value.trim() && !pendingImageData;
   autoGrow();
+  if (msgInput.value.trim()) setTyping(); else if (typingRef) typingRef.remove();
 });
 msgInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 sendBtn.addEventListener('click', send);
+attachImageBtn.addEventListener('click', () => imageInput.click());
+imageInput.addEventListener('change', async () => {
+  const file=imageInput.files && imageInput.files[0]; if(!file) return;
+  attachImageBtn.disabled=true;
+  try { pendingImageData=await compressImage(file); sendBtn.disabled=false; msgInput.placeholder='Add a caption…'; }
+  catch(e){ alert(e.message || 'Couldn\'t prepare that image.'); pendingImageData=null; }
+  imageInput.value=''; attachImageBtn.disabled=false;
+});
 
-function send() {
+async function send() {
   const text = msgInput.value.trim();
-  if (!text || !currentRoomId) return;
-  sendBtn.disabled = true;
-  msgInput.value = '';
-  autoGrow();
-  const user = auth.currentUser;
-  messagesRef.push({
-    uid: user.uid, name: user.displayName || 'Someone', color: colorFor(user.uid),
-    text, ts: Date.now()
-  }).catch(() => {
-    msgInput.value = text;
-    sendBtn.disabled = false;
-  });
+  if ((!text && !pendingImageData) || !currentRoomId) return;
+  const now=Date.now();
+  if (now-lastMessageSentAt < MESSAGE_COOLDOWN_MS) return;
+  if (!roomMembers[memberId]) return;
+  sendBtn.disabled=true; attachImageBtn.disabled=true;
+  const image=pendingImageData;
+  const user=auth.currentUser;
+  const payload={ uid:user.uid, name:user.displayName || 'Someone', color:colorFor(user.uid), ts:now };
+  if (text) payload.text=text;
+  if (image) payload.image=image;
+  try {
+    await messagesRef.push(payload);
+    lastMessageSentAt=now; msgInput.value=''; pendingImageData=null; msgInput.placeholder='Say something…'; autoGrow();
+    if (typingRef) typingRef.remove();
+  } catch(e) { console.error(e); }
+  sendBtn.disabled=!msgInput.value.trim() && !pendingImageData; attachImageBtn.disabled=false;
 }
+
+
 </script>
 </body>
 </html>
