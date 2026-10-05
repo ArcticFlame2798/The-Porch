@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://arcticflame2798.github.io/The-Porch/sitemap.xml
