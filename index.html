@@ -1090,7 +1090,14 @@ async function openManage(roomId, room) {
     manageBannedList.appendChild(row);
   }
   manageBannedList.querySelectorAll('[data-unban]').forEach(btn => btn.addEventListener('click', async () => {
-    await db.ref('rooms/' + roomId + '/banned/' + btn.dataset.unban).remove();
+    const uid = btn.dataset.unban;
+    // Unban and restore both membership indexes atomically so the user
+    // immediately appears in Members and can access the room again.
+    await db.ref().update({
+      ['rooms/' + roomId + '/banned/' + uid]: null,
+      ['rooms/' + roomId + '/members/' + uid]: { joinedAt: Date.now() },
+      ['userRooms/' + uid + '/' + roomId]: true
+    });
     const snap = await db.ref('rooms/' + roomId).once('value'); openManage(roomId, snap.val());
   }));
 
